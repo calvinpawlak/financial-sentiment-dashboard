@@ -1,0 +1,24 @@
+# Render "Blueprint" config, added 2026-07-12 for public hosting.
+#
+# Lets Render provision this service automatically from this one file
+# instead of clicking through manual setup: on render.com, "New +" ->
+# "Blueprint" -> point it at this repo, and it reads this file.
+#
+# DATABASE_URL is intentionally left for you to set by hand in Render's
+# dashboard (Environment tab) after creating your free Neon Postgres
+# database - it's a secret connection string and shouldn't live in a file
+# that might get committed to a public repo. See README.md's "Hosting"
+# section for the exact steps (Neon signup -> copy connection string ->
+# paste it here).
+services:
+  - type: web
+    name: financial-sentiment-dashboard
+    env: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn webapp.server:app"
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: PYTHON_VERSION
+        value: "3.12.0"

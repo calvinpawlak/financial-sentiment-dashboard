@@ -1,0 +1,193 @@
+/* Dark fintech theme, loosely modeled on a reference mockup Calvin shared -
+   near-black background, card-grid layout, teal/red up-down accents. */
+
+:root {
+  --bg: #0b0e14;
+  --panel: #141821;
+  --panel-alt: #191e29;
+  --border: #232938;
+  --text: #e7e9ee;
+  --muted: #8a92a6;
+  --green: #22c55e;
+  --red: #ef4444;
+  --amber: #f59e0b;
+  --accent: #3b82f6;
+  --radius: 12px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+button { font-family: inherit; }
+
+/* --- Top bar --------------------------------------------------------- */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 28px;
+  border-bottom: 1px solid var(--border);
+}
+.topbar-left { display: flex; align-items: center; gap: 10px; }
+.logo-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 8px var(--green);
+}
+.brand { font-size: 16px; font-weight: 600; letter-spacing: 0.2px; }
+.topbar-right { display: flex; align-items: center; gap: 18px; }
+.last-updated { color: var(--muted); font-size: 12px; }
+
+.tabs { display: flex; gap: 4px; background: var(--panel-alt); padding: 4px; border-radius: 8px; }
+.tabs button {
+  background: transparent; border: none; color: var(--muted);
+  padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer;
+}
+.tabs button.active { background: var(--accent); color: #fff; }
+.tabs button:hover:not(.active) { color: var(--text); }
+
+/* --- Disclaimer -------------------------------------------------------- */
+.disclaimer {
+  display: flex; gap: 10px; align-items: flex-start;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #f3d9ac;
+  padding: 12px 28px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.disclaimer-icon { flex-shrink: 0; }
+
+/* --- Layout ------------------------------------------------------------ */
+.content { padding: 20px 28px 40px; display: flex; flex-direction: column; gap: 20px; }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+}
+.panel-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
+.panel-header h2 { font-size: 15px; margin: 0; font-weight: 600; }
+.muted { color: var(--muted); font-size: 12px; }
+
+/* --- KPI strip ----------------------------------------------------------*/
+.kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}
+.kpi-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.kpi-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+.kpi-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.kpi-ticker { font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: 0.4px; }
+.kpi-price { font-size: 20px; font-weight: 700; margin-top: 4px; }
+.kpi-change { font-size: 12px; margin-top: 2px; display: flex; align-items: center; gap: 4px; }
+.kpi-change.up { color: var(--green); }
+.kpi-change.down { color: var(--red); }
+.kpi-signal {
+  margin-top: 8px; display: inline-block; font-size: 10px; font-weight: 700;
+  padding: 2px 8px; border-radius: 999px; letter-spacing: 0.4px;
+}
+.kpi-signal.buy { background: rgba(34,197,94,0.15); color: var(--green); }
+.kpi-signal.sell { background: rgba(239,68,68,0.15); color: var(--red); }
+.kpi-signal.hold { background: rgba(245,158,11,0.15); color: var(--amber); }
+
+/* --- Detail grid ---------------------------------------------------------*/
+.detail-grid { display: grid; grid-template-columns: 2.2fr 1fr; gap: 20px; }
+.chart-panel canvas { max-height: 300px; }
+
+.stat-panel { display: flex; flex-direction: column; gap: 18px; }
+.stat-block { display: flex; flex-direction: column; gap: 4px; }
+.stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.stat-value { font-size: 20px; font-weight: 700; }
+.stat-badge {
+  align-self: flex-start;
+  font-size: 15px; font-weight: 800; padding: 4px 14px; border-radius: 8px;
+}
+.stat-badge.buy { background: rgba(34,197,94,0.15); color: var(--green); }
+.stat-badge.sell { background: rgba(239,68,68,0.15); color: var(--red); }
+.stat-badge.hold { background: rgba(245,158,11,0.15); color: var(--amber); }
+.stat-reasoning { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.stat-social { font-size: 12px; color: var(--muted); border-top: 1px solid var(--border); padding-top: 12px; }
+.stat-social .social-line { margin-bottom: 4px; }
+
+/* --- Table ---------------------------------------------------------------*/
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 10px 8px; font-size: 13px; }
+thead th { color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; border-bottom: 1px solid var(--border); }
+tbody tr { border-bottom: 1px solid var(--border); cursor: pointer; }
+tbody tr:hover { background: var(--panel-alt); }
+tbody tr.selected { background: rgba(59,130,246,0.08); }
+td.num { font-variant-numeric: tabular-nums; }
+.change-up { color: var(--green); }
+.change-down { color: var(--red); }
+.badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+.badge.bullish, .badge.buy { background: rgba(34,197,94,0.15); color: var(--green); }
+.badge.bearish, .badge.sell { background: rgba(239,68,68,0.15); color: var(--red); }
+.badge.mixed, .badge.hold, .badge.nodata { background: rgba(245,158,11,0.15); color: var(--amber); }
+.sparkline-cell canvas { width: 90px !important; height: 28px !important; }
+
+/* --- Posts panel -----------------------------------------------------------*/
+.posts-list { list-style: none; margin: 0; padding: 0; max-height: 340px; overflow-y: auto; }
+.posts-list li {
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 4px;
+}
+.posts-list li:last-child { border-bottom: none; }
+.post-meta { display: flex; gap: 8px; align-items: center; font-size: 11px; color: var(--muted); }
+.post-text { font-size: 13px; line-height: 1.4; }
+.post-source { text-transform: uppercase; font-weight: 700; letter-spacing: 0.3px; }
+
+/* --- Accuracy log panel -----------------------------------------------------*/
+.accuracy-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.accuracy-card {
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.accuracy-card .accuracy-horizon { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.accuracy-card .accuracy-pct { font-size: 26px; font-weight: 800; margin-top: 4px; }
+.accuracy-card .accuracy-pct.good { color: var(--green); }
+.accuracy-card .accuracy-pct.bad { color: var(--red); }
+.accuracy-card .accuracy-pct.none { color: var(--muted); }
+.accuracy-card .accuracy-detail { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.accuracy-note { margin: 0 0 14px; font-size: 12px; line-height: 1.5; }
+.result-pill { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+.result-pill.correct { background: rgba(34,197,94,0.15); color: var(--green); }
+.result-pill.incorrect { background: rgba(239,68,68,0.15); color: var(--red); }
+.result-pill.hold { background: rgba(139,146,166,0.15); color: var(--muted); }
+.result-pill.pending { background: rgba(59,130,246,0.12); color: var(--accent); }
+
+/* --- Footer -----------------------------------------------------------------*/
+.footer {
+  padding: 16px 28px 32px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 900px) {
+  .detail-grid { grid-template-columns: 1fr; }
+}

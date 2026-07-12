@@ -1,0 +1,493 @@
+# Financial Sentiment Dashboard — All 4 Layers Built
+
+This is a four-layer project, all built:
+
+1. **Data ingestion** — live stock prices + free social/news chatter
+2. **Processing & NLP sentiment classification** — done, see below
+3. **Storage & backend** — done, see below
+4. **Visualization dashboard** — done, see below
+
+## What this layer does
+
+Every time you run `main.py`, it does one ingestion cycle across your ticker
+list and appends the results to a local SQLite database:
+
+| Source | What it pulls | Cost | Notes |
+|---|---|---|---|
+| [yfinance](https://github.com/ranaroussi/yfinance) | Live/delayed price quote | Free, no key | Unofficial Yahoo Finance wrapper |
+| [StockTwits](https://stocktwits.com) | Recent chatter per symbol | Free, no key | ~200 req/hour rate limit (unauthenticated) |
+| Reddit ([PRAW](https://praw.readthedocs.io)) | Posts mentioning your tickers from r/wallstreetbets, r/stocks, r/investing, r/StockMarket | Free, but now gated behind manual approval | See setup below — **optional/pending**, pipeline runs fine without it |
+| [FinViz](https://finviz.com) | Per-ticker news headlines (scraped) | Free | HTML scrape — see caveat below |
+| [Finnhub](https://finnhub.io) | Company news headlines + Finnhub's own aggregated Reddit/Twitter mention & sentiment rollup | Free tier, needs a signup key | 60 calls/min as of mid-2026 — see setup below. **Optional**, skipped cleanly without a key |
+| Google News (unofficial RSS) | Per-ticker news headlines | Free, no key | Unofficial feed — see caveat below |
+
+No X (Twitter) or Instagram integration is included directly — Instagram
+has no practical API for pulling public post/comment sentiment, and X's own
+API only gives useful volume on a paid tier. Finnhub's social-sentiment
+endpoint gets you a Reddit/Twitter-adjacent signal anyway (aggregated on
+their end, not raw posts), without needing our own gated Reddit app or a
+paid X tier — see below.
+
+## Setup
+
+```bash
+cd financial-sentiment-dashboard
+pip install -r requirements.txt
+cp .env.example .env
+```
+
+### Reddit credentials (optional — currently gated behind manual approval)
+
+As of June 2026, Reddit rolled out a "Responsible Builder Policy" that
+requires explicit approval before *any* API access, including simple
+personal script apps. The old flow (click "create app," get an instant
+client ID/secret) no longer works — the create-app page now just points
+you at [the policy itself](https://support.reddithelp.com/hc/en-us/articles/42728983564564-Responsible-Builder-Policy)
+instead of issuing credentials.
+
+To request access:
+
+1. File a request via [this ticket link](https://support.reddithelp.com/hc/en-us/requests/new?ticket_form_id=14868593862164&tf_42139884615700=api_request_type_developer_clone)
+   (from the "not supported by Devvit" path in Reddit's policy). Describe it
+   plainly: a personal, non-commercial tool that reads public posts from a
+   few finance subreddits to gauge sentiment.
+2. Expect a wait — developers report anywhere from a few days to several
+   weeks, and some get no response. Don't block on this.
+3. If/when you get a client ID and secret, paste them into `.env`:
+   ```
+   REDDIT_CLIENT_ID=xxxx
+   REDDIT_CLIENT_SECRET=xxxx
+   ```
+
+Until then, leave `.env` as-is. The pipeline is already built to handle
+this: with no Reddit credentials set, `main.py` logs a warning and skips
+Reddit for that cycle — StockTwits and FinViz still run normally, so you're
+not blocked from using layer 1 while any approval is pending.
+
+### Finnhub credentials (optional, free signup)
+
+Added 2026-07-12 to broaden news coverage and add a Reddit/Twitter-adjacent
+signal without needing Reddit's own gated API access.
+
+1. Sign up for a free key at [finnhub.io/register](https://finnhub.io/register).
+2. Paste it into `.env`:
+   ```
+   FINNHUB_API_KEY=xxxx
+   ```
+3. That's it — `main.py` will start pulling Finnhub company news
+   automatically next run (see below re: social sentiment).
+
+Two things worth knowing:
+- **`/stock/social-sentiment` is confirmed paid-only as of 2026-07-12** —
+  it returned a clean 403 on a brand-new free-tier key on the first real
+  run. Finnhub has moved previously-free endpoints to paid before without
+  much notice (see [finnhubio/Finnhub-API issue #271](https://github.com/finnhubio/Finnhub-API/issues/271)
+  for a different endpoint hitting the same thing), and this is apparently
+  one of them now. The code detects the 403 once and stops calling that
+  endpoint for the rest of the cycle (rather than repeating the same
+  failure — and burning a call — for every ticker), and logs a single clear
+  warning. **Company news is completely unaffected** — that endpoint is
+  working fine and is the main value from Finnhub right now. If you want
+  the Reddit/Twitter-aggregated sentiment signal specifically, it needs a
+  paid Finnhub plan; otherwise this piece just quietly contributes nothing,
+  and the dashboard/report already handle that (no line shown, not an
+  error).
+- The social-sentiment numbers (if you do upgrade) are **pre-aggregated by
+  Finnhub**, not individual posts, so they can't be scored by our own VADER
+  pipeline like everything else. They're stored separately
+  (`raw_social_sentiment_agg`) and shown as a supplementary line in
+  `report.py`/the dashboard — not merged into the bullish/bearish/neutral
+  counts.
+
+Until you add a key, leave `.env` as-is — Finnhub ingestion is skipped
+cleanly, same pattern as pending Reddit access.
+
+## Running it
+
+```bash
+python main.py
+```
+
+This runs **one** ingestion cycle and exits. Check `logs/ingestion.log` for
+a run summary, and inspect `data/sentiment_dashboard.db` (plain SQLite —
+use [DB Browser for SQLite](https://sqlitebrowser.org/) if you want a GUI).
+
+## Making it "continuous"
+
+There's no always-on background service here — `main.py` does one pass and
+exits. For continuous monitoring, schedule it to run repeatedly.
+
+**Split cadence, added 2026-07-12** (Calvin asked for 5-minute scanning
+across the board; FinViz only updates news ~every 30 min and its terms
+discourage high-frequency automated hits, and Google News RSS is unofficial
+with no documented rate limit either — polling either one every 5 min would
+just refetch the same headlines 3x as often for no new data). So:
+- **Fast, every 5 minutes:** prices, StockTwits, Reddit, Finnhub —
+  `python main.py --fast-only`
+- **Slow, every 15 minutes:** FinViz, Google News —
+  `python main.py --slow-only`
+- `python main.py` with no flag runs everything - useful for a one-off
+  manual run, not for scheduling.
+
+**Windows (Task Scheduler) — automated:**
+Run this once from inside the project folder:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\setup_task_scheduler.ps1
+```
+This registers two tasks - `FinancialSentimentDashboard-Ingestion-Fast`
+(every 5 min) and `-Slow` (every 15 min) - each firing once a minute after
+creation, then repeating indefinitely. Safe to re-run if you change the
+intervals or move folders. If you get "Access Denied," re-run PowerShell as
+Administrator first. If you have the old single-task version from before
+2026-07-12, remove it: `Unregister-ScheduledTask -TaskName 'FinancialSentimentDashboard-Ingestion'`.
+
+**Windows (Task Scheduler) — manual, if you'd rather click through it:**
+Create two tasks:
+1. Trigger: repeat every 5 minutes. Action: `python.exe` with argument
+   `main.py --fast-only`, "Start in" set to this project folder.
+2. Trigger: repeat every 15 minutes. Action: `python.exe` with argument
+   `main.py --slow-only`, "Start in" set to this project folder.
+
+(Matches `FAST_REFRESH_INTERVAL_MINUTES` / `SLOW_REFRESH_INTERVAL_MINUTES`
+in `config/settings.py` — change both the script/task and that file
+together if you want different intervals.)
+
+**Mac/Linux (cron):**
+```
+*/5  * * * * cd /path/to/financial-sentiment-dashboard && /usr/bin/python3 main.py --fast-only >> logs/cron.log 2>&1
+*/15 * * * * cd /path/to/financial-sentiment-dashboard && /usr/bin/python3 main.py --slow-only >> logs/cron.log 2>&1
+```
+
+## Configuration
+
+Edit `config/settings.py`:
+- `TICKERS` — your watchlist: SPY, QQQ, MSFT, AAPL, GOOG, NVDA, NDAQ, VOO,
+  SPCX (Space Exploration Technologies Corp / SpaceX, IPO'd 2026-06-12).
+  INX was dropped — it wasn't a valid ticker on any of these sources
+  (Yahoo confirmed "possibly delisted"); ^GSPC was tried as a replacement
+  but only gets price coverage (StockTwits/FinViz don't carry raw index
+  symbols), so it was dropped too rather than kept as partial coverage.
+- `SUBREDDITS`, `REDDIT_POST_LIMIT` — Reddit scan scope
+- `STOCKTWITS_MESSAGE_LIMIT` — messages pulled per ticker per cycle
+
+## Layer 2: sentiment scoring
+
+Every `python main.py` run now also scores any newly-ingested `raw_social` /
+`raw_news` rows with VADER (`vaderSentiment`) and writes results to a new
+`scored_sentiment` table — compound/pos/neu/neg scores plus a
+bullish/bearish/neutral label, using VADER's own convention (compound
+>= 0.05 → bullish, <= -0.05 → bearish, else neutral). Already-scored rows
+are never rescored (`processing/sentiment.py` checks `scored_sentiment` for
+existing `(origin_table, origin_id)` pairs first), so it's safe to run
+repeatedly.
+
+**Financial slang patch:** plain VADER misreads some common finance terms —
+e.g. "Nvidia crushes expectations" scored bearish out of the box, since
+"crushes" reads as violent/destructive in everyday English. A small custom
+lexicon override in `processing/sentiment.py` (`_FINANCE_LEXICON_OVERRIDES`)
+fixes the unambiguous cases (crush/beat/miss/bullish/bearish/moon/rally/
+selloff/downgrade/upgrade). Deliberately left out ambiguous slang like "dip"
+("buy the dip" is bullish, "the stock dipped" isn't) where guessing wrong
+would be worse than leaving it to VADER's default.
+
+**Quick summary view:** once you've run `main.py` at least once,
+```bash
+python report.py            # sentiment summary, last 24h
+python report.py --hours 6  # custom window
+```
+prints a per-ticker bullish/bearish/neutral breakdown with a rough verdict —
+a preview of what the layer 4 dashboard will eventually show.
+
+## Layer 3: storage & backend
+
+SQLite (via `storage/db.py`) is still the right tool at this scale — layer 3
+was mostly hardening what layer 1/2 already built, not new infrastructure:
+
+- **Indexes** on `scored_sentiment(ticker, scored_at)` and a few other
+  columns, so `report.py`'s time-windowed, per-ticker queries stay fast as
+  rows accumulate instead of doing a full table scan every time.
+- **WAL journal mode**, enabled automatically in `get_conn()`. Without it,
+  running `report.py` while `main.py` is mid-write (increasingly likely once
+  `setup_task_scheduler.ps1` is running every 15 minutes) risked a
+  "database is locked" error — WAL allows concurrent reads during a write.
+- **`storage/queries.py`** — the aggregation/lookup SQL that used to live
+  directly in `report.py` is now in shared, reusable functions
+  (`get_sentiment_summary`, `get_latest_prices`, `get_recent_posts`,
+  `verdict_for`). `report.py` now just calls these. The layer 4 dashboard
+  will reuse the exact same functions rather than duplicating SQL again.
+- **`prune.py`** — optional retention/cleanup, run by hand or scheduled
+  separately (never runs automatically from `main.py`, so nothing is ever
+  silently deleted):
+  ```bash
+  python prune.py --days 90 --dry-run   # preview what would be deleted
+  python prune.py --days 90             # actually delete + reclaim disk space
+  ```
+  `raw_prices` grows every cycle by design (it's a time series); social/news
+  data grows with real chatter volume. If you want retention enforced
+  automatically, this could get its own much-less-frequent Task Scheduler
+  entry (e.g. monthly) — ask if you'd like that wired up.
+
+**A bug this testing caught:** the first version of `prune.py` tried to run
+SQLite's `VACUUM` inside the same transaction as the deletes, which SQLite
+rejects outright. Fixed by adding a dedicated `storage.db.vacuum()` that
+opens its own connection after the delete transaction has fully committed.
+
+## Layer 4: dashboard
+
+**Primary UI, added 2026-07-12: a local Flask web app** (`webapp/`), replacing
+Streamlit as the main way to view this. Calvin wanted a more polished,
+custom UI (card-grid KPIs, gradient price chart, sparkline table) modeled on
+a reference mockup — Streamlit's layout engine can't fully replicate that
+kind of design, so this moved to a real (but still fully local, no
+cloud/accounts) frontend instead.
+
+```bash
+python webapp/server.py
+```
+Then open `http://localhost:5000` in your browser. Leave the terminal
+window running — that's your local server; closing it stops the dashboard
+(reopening `http://localhost:5000` won't work until you run the command
+again). This reads the same `data/sentiment_dashboard.db` via the same
+`storage/queries.py` functions as everything else — no new query logic, no
+new database access patterns, just a nicer face on it.
+
+**Architecture:**
+- `webapp/server.py` — a small Flask app. Three JSON API routes
+  (`/api/tickers`, `/api/overview`, `/api/ticker/<ticker>`) that just call
+  the existing `storage/queries.py` functions and return JSON; also serves
+  the frontend as static files.
+- `webapp/static/index.html` / `style.css` / `app.js` — the frontend. Plain
+  HTML/CSS/vanilla JS (no build step, no framework) plus
+  [Chart.js](https://www.chartjs.org/) loaded from a CDN for the main price
+  chart, the per-row watchlist sparklines, and (implicitly, via the same
+  library) any future charts. `app.js` polls the API every 60 seconds and
+  updates the page in place (no full reload), matching or improving on the
+  old Streamlit auto-refresh behavior.
+
+What it shows:
+- **KPI card strip** — one clickable card per ticker (price, day change %,
+  Signal badge) — click a card (or a watchlist row) to drive the chart/stats
+  panel below
+- **Main chart + stats panel** — selected ticker's price history with a
+  dashed sentiment overlay (dual axis), next to Signal/Verdict/latest
+  price/posts-analyzed stats and a "why" reasoning line
+- **Watchlist table** — full ticker list with bullish/bearish/neutral
+  counts, verdict, signal, and a small inline price sparkline per row
+- **Recent chatter panel** — the selected ticker's most recent scored
+  posts/headlines, newest first
+- Lookback window tabs (1H/6H/12H/1D/2D/3D/7D) drive all of the above at
+  once, same options as the old Streamlit sidebar slider
+
+Tested by seeding a fresh SQLite fixture and hitting all three API routes
+through Flask's test client (`/api/tickers`, `/api/overview` with valid and
+invalid `hours` values, `/api/ticker/<ticker>` for a real ticker, an unknown
+ticker, and a lowercase ticker) — all returned correct shapes and the
+BUY/SELL/HOLD signal matched expectations in each case. The frontend's
+visual polish couldn't be verified from this sandbox (no browser here) —
+take a look once it's running and let me know if the layout needs
+adjusting.
+
+### Streamlit dashboard (fallback)
+
+The original Streamlit dashboard (`dashboard/app.py`) is left in place and
+still works if you'd rather not run a local server:
+```bash
+streamlit run dashboard/app.py
+```
+If Windows says `streamlit` isn't recognized (pip installs its scripts
+folder isn't always on PATH), use `python -m streamlit run dashboard/app.py`
+instead — same effect, doesn't need PATH changes. Opens at
+`http://localhost:8501`, shares the exact same `storage/queries.py` data
+layer as the Flask app, just a plainer default look.
+
+### Buy / Sell / Hold signal
+
+Every ticker also gets a **Signal** — BUY, SELL, or HOLD — computed by
+`storage/queries.py`'s `get_signal()` and shown in both dashboards (the
+Flask app's KPI cards/watchlist/stat panel, and the Streamlit app's overview
+table/drill-down), always with a one-line "why" explanation. It's a fully
+transparent, mechanical rule combining two things you can already see
+elsewhere on the dashboard:
+
+1. The **sentiment verdict** for the ticker over your selected lookback
+   window (BULLISH / BEARISH / MIXED-NEUTRAL / NO DATA, from `verdict_for()`)
+2. The ticker's **latest day-over-day price direction** (UP / DOWN / FLAT /
+   UNKNOWN)
+
+Rule, deliberately conservative — HOLD unless both signals agree:
+
+| Sentiment | Price direction | Signal |
+|---|---|---|
+| BULLISH | UP or FLAT | **BUY** |
+| BEARISH | DOWN or FLAT | **SELL** |
+| anything else (conflicting, mixed, or no/unknown data) | | **HOLD** |
+
+So bullish chatter on a falling stock — or bearish chatter on a rising one —
+resolves to HOLD, not a confident call, since that's exactly the situation
+where the two inputs disagree and a forced pick would be least justified.
+Verified offline against 7 synthetic cases (clean BUY, clean SELL, three
+HOLD variants from conflicting signals, a BUY with flat price, and a
+never-seen ticker) — all resolved as expected.
+
+**This is not financial advice.** It's two noisy, free-data heuristics
+mechanically combined — public sentiment and one day's price move — not a
+recommendation from a financial advisor, and it has no knowledge of your
+portfolio, risk tolerance, or timeframe. The dashboard shows a warning
+banner near the top and a footer note repeating this; treat the Signal as
+one input among many and do your own research before acting on it.
+
+### Prediction accuracy log
+
+Added 2026-07-12, so Calvin can see whether the Signal is actually any good
+over time instead of just trusting it. Every ingestion cycle, `main.py`
+checks each ticker's current Signal against what was logged last time
+(`processing/signal_tracking.py`):
+
+- **Logs on change, not every cycle** — a new row is written to `signal_log`
+  only when a ticker's Signal flips (e.g. HOLD → BUY, or BUY → SELL), along
+  with the price at that moment. This is deliberate: once ingestion runs
+  every 5 minutes, logging unconditionally would mean thousands of
+  near-duplicate "still BUY" rows a day for a signal that rarely changes,
+  drowning out the moments that actually matter.
+- **Graded at two horizons, 4 hours and 24 hours** — a background step
+  (`evaluate_pending_signals()`, also run every cycle) looks for logged
+  signals old enough to grade and compares the price at roughly that horizon
+  to the price when the signal fired:
+  - **BUY** is correct if the price at the horizon is higher.
+  - **SELL** is correct if the price at the horizon is lower.
+  - **HOLD is never graded correct or incorrect** — it isn't a directional
+    bet, so scoring it would overstate how rigorous this tool is. HOLD rows
+    show as "—" in the log rather than a pass/fail.
+  - Evaluation is approximate ("first price sample at or after the horizon
+    time"), not to-the-second precise, since ingestion runs on a 5/15-minute
+    cadence, not continuously.
+- **Shown on the dashboard** — a new "Prediction Accuracy" panel shows
+  overall hit-rate cards for both horizons plus a table of recent BUY/SELL/
+  HOLD calls with their outcome once graded (still "pending" until the
+  horizon has passed).
+
+**Same disclaimer applies, more so:** a hit-rate percentage here is still
+just a track record of one heuristic against a small ticker list over a
+short time window — not a guarantee of future performance, and not
+financial advice. A short losing (or winning) streak on 5-9 tickers isn't
+statistically meaningful; treat this log as a transparency tool, not a
+seal of approval.
+
+Verified offline with synthetic signal-log/price-history fixtures covering:
+a signal that never changes (no new rows logged), a flip that gets logged
+once, correct/incorrect grading at both horizons for BUY and SELL, a HOLD
+row correctly left ungraded, and re-running evaluation twice without
+double-grading the same row.
+
+## Hosting it publicly
+
+Added 2026-07-12. Calvin asked to host this dashboard as a public website.
+Everything above (ingestion, scoring, the accuracy log) still runs locally
+on your PC via Task Scheduler — only the **dashboard itself** moves to a
+public URL. Two free services, chosen after checking current (mid-2026)
+terms rather than assuming older free-tier reputations still hold:
+
+- **[Neon](https://neon.tech)** — free Postgres, the one piece SQLite can't
+  do (a file on your PC isn't reachable from a public website). Neon's free
+  tier gives 0.5GB storage and pauses ("scale-to-zero") after 5 minutes of
+  no activity, waking back up in milliseconds on the next query — no
+  30-day expiry, no manual unpausing.
+- **[Render](https://render.com)** — free web hosting for the Flask app
+  itself. The free tier's real limitation: the app **sleeps after 15
+  minutes of no traffic** and takes ~30-60 seconds to wake on the next
+  visit. Fine for a personal dashboard, not for something needing instant
+  load every time.
+
+(Ruled out: Railway's free tier is now just a $1/month credit, not enough
+to run this continuously; Fly.io has had no free tier since 2024; Render's
+own free Postgres expires after 30 days, so Neon is used for the database
+instead of Render's.)
+
+**Setup, one-time:**
+
+1. **Create the database.** Sign up free at [neon.tech](https://neon.tech),
+   create a project, and copy the connection string it gives you (starts
+   with `postgresql://...`).
+2. **Point local ingestion at it.** Add that connection string to your
+   local `.env`:
+   ```
+   DATABASE_URL=postgresql://your-neon-connection-string
+   ```
+   `storage/db.py` detects `DATABASE_URL` automatically and switches from
+   SQLite to Postgres — no code changes needed, and nothing else in the
+   codebase (`queries.py`, `sentiment.py`, `prune.py`, `signal_tracking.py`)
+   had to change either. Run `python main.py` once by hand afterward to
+   confirm it connects and populates the new database (check the Neon
+   console's table view, or watch `logs/ingestion.log`).
+3. **Deploy the dashboard.** Sign up free at [render.com](https://render.com),
+   choose **New +  → Blueprint**, and point it at this project's repo (push
+   it to GitHub first if it isn't already — Render deploys from a repo, not
+   a local folder). Render reads `render.yaml` automatically and provisions
+   the web service.
+4. **Set the database connection on Render.** In the new service's
+   **Environment** tab, add `DATABASE_URL` with the *same* Neon connection
+   string from step 1 (left blank in `render.yaml` on purpose — it's a
+   secret and shouldn't sit in a file that could end up in a public repo).
+5. **Confirm it's live.** Render gives you a public URL
+   (`https://financial-sentiment-dashboard.onrender.com`-style). Open it —
+   first load may be slow if the free instance was asleep. It reads from
+   the same Neon database your local ingestion is writing to, so data
+   should match your local dashboard within one ingestion cycle.
+
+**The catch that doesn't go away:** ingestion (steps 1-8 of `main.py`, plus
+the Task Scheduler jobs) still only runs while your PC is on. Hosting the
+*dashboard* publicly doesn't make the *data collection* run in the cloud —
+if your PC is off or asleep, the public site stays up and shows the last
+data collected, it just stops getting fresher. Moving ingestion itself to
+run in the cloud too (e.g. a scheduled job on Render or elsewhere) is
+possible later but is a separate, larger step than what was asked for here.
+
+## Known fragility
+
+FinViz scraping (`ingestion/news.py`) parses HTML, not a stable API — if it
+starts returning zero headlines for everything, FinViz likely changed their
+page structure and the `table#news-table` selector will need a quick fix.
+This is the most fragile piece of the pipeline; the API-based sources
+(yfinance, StockTwits, Reddit, Finnhub) are much more durable.
+
+FinViz's terms restrict heavy automated/commercial scraping — this is built
+for low-frequency personal use (roughly matching their own ~30 min update
+cycle), not high-frequency polling.
+
+Google News RSS (`ingestion/google_news_source.py`) is the same fragility
+class as FinViz — an unofficial, undocumented feed rather than a stable API
+contract. It's a second, independent news source specifically so a change
+or outage in one doesn't take down news coverage entirely; if it ever
+starts returning nothing, check whether
+`https://news.google.com/rss/search?q=test` still returns a feed in a
+browser before assuming the code broke.
+
+## Reference architectures
+
+This design draws on two comparable open-source projects:
+- [SaloniJhalani/Stock-Market-Live-Sentiment](https://github.com/SaloniJhalani/Stock-Market-Live-Sentiment) — FinViz news + yfinance + VADER + Plotly, deployed via GitHub Pages
+- [indiser/market-sentiment-analyzer](https://github.com/indiser/market-sentiment-analyzer) — Reddit + TextBlob (polarity > 0.1 = bullish, < -0.1 = bearish) + Flask + Chart.js
+
+Layer 2 followed a similar bullish/bearish/neutral classification using
+VADER, tuned for financial short-text since it handles slang/emphasis
+better than plain TextBlob for this kind of content (with the finance
+lexicon patch above closing the remaining gap).
+
+## What's next
+
+All four layers are built and tested, with Finnhub + Google News added as
+extra layer 1 sources, a custom Flask web app as the primary layer 4 UI, a
+prediction accuracy log, a split 5/15-minute ingestion cadence, and public
+hosting support (all 2026-07-12). Possible future directions, none
+required: retry Reddit ingestion once your API access request is approved;
+add more tickers or subreddits; move off SQLite locally if data volume ever
+outgrows it (unlikely at this scale); add price alerts or a notifications
+layer on top of the verdicts; move ingestion itself into the cloud so the
+public dashboard stays fresh even when your PC is off (see the "catch" at
+the end of the Hosting section above).
+
+## Disclaimer
+
+Sentiment signals in this pipeline are heuristic, not financial advice.
+This is intended as a research/monitoring tool, not a substitute for your
+own due diligence.

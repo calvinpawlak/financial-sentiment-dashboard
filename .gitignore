@@ -1,0 +1,16 @@
+# Secrets - never commit real credentials
+.env
+
+# Local SQLite database + WAL files
+data/*.db
+data/*.db-wal
+data/*.db-shm
+
+# Logs
+logs/*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
