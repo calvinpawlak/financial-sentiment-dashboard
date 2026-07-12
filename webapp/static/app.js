@@ -370,6 +370,14 @@ async function loadOverview() {
 
 // --- Prediction accuracy log ----------------------------------------------
 
+// Renders one BUY-or-SELL sub-row inside an accuracy card - added
+// 2026-07-12 so a strong-on-BUYs/weak-on-SELLs rule (or vice versa) is
+// visible instead of hidden inside one pooled percentage.
+function bySignalRow(label, s) {
+  if (!s || s.graded === 0) return `<div class="accuracy-subrow muted">${label}: no graded calls yet</div>`;
+  return `<div class="accuracy-subrow">${label}: <strong>${s.accuracy_pct}%</strong> (${s.correct}/${s.graded})</div>`;
+}
+
 function renderAccuracySummary(accuracy) {
   const container = document.getElementById("accuracy-summary");
   container.innerHTML = "";
@@ -383,6 +391,20 @@ function renderAccuracySummary(accuracy) {
       pctText = `${stats.accuracy_pct}%`;
       pctClass = stats.accuracy_pct >= 50 ? "good" : "bad";
     }
+    // Baseline comparison, added 2026-07-12: markets drift upward over
+    // time, so a BUY-heavy rule can look "accurate" purely by riding that
+    // drift. Showing "price simply rose X% of the time anyway" next to the
+    // rule's own accuracy lets you tell skill from drift at a glance.
+    const baselineText = stats.baseline_n > 0
+      ? `Baseline: price rose in ${stats.baseline_up_pct}% of all ${stats.baseline_n} graded windows anyway`
+      : "Baseline: not enough graded windows yet";
+    const ciText = graded > 0
+      ? `95% confidence range: ${stats.accuracy_ci_low}%–${stats.accuracy_ci_high}%`
+      : "";
+    const lowSampleWarning = stats.low_sample && graded > 0
+      ? `<div class="accuracy-warning">Only ${graded} graded call(s) so far - too few to trust this percentage yet.</div>`
+      : "";
+
     const card = document.createElement("div");
     card.className = "accuracy-card";
     card.innerHTML = `
@@ -390,6 +412,13 @@ function renderAccuracySummary(accuracy) {
       <div class="accuracy-pct ${pctClass}">${pctText}</div>
       <div class="accuracy-detail">${stats.correct} correct / ${stats.incorrect} incorrect (${graded} graded)</div>
       <div class="accuracy-detail">${stats.hold} HOLD (no call) · ${stats.pending} pending</div>
+      <div class="accuracy-detail muted">${ciText}</div>
+      <div class="accuracy-detail muted">${baselineText}</div>
+      ${lowSampleWarning}
+      <div class="accuracy-by-signal">
+        ${bySignalRow("BUY", stats.by_signal && stats.by_signal.BUY)}
+        ${bySignalRow("SELL", stats.by_signal && stats.by_signal.SELL)}
+      </div>
     `;
     container.appendChild(card);
   }
@@ -406,11 +435,27 @@ function resultPill(evalResult) {
     : `<span class="result-pill incorrect">incorrect${pctText}</span>`;
 }
 
+// Source mix for one logged signal, e.g. "STOCKTWITS 12 · FINNHUB 4" - added
+// 2026-07-12 so it's possible to eyeball which source(s) actually drove a
+// given call, ahead of properly slicing accuracy by source once there's
+// enough history.
+function sourceBadges(sourceBreakdown) {
+  if (!sourceBreakdown || Object.keys(sourceBreakdown).length === 0) {
+    return '<span class="muted">—</span>';
+  }
+  return Object.entries(sourceBreakdown)
+    .map(([source, counts]) => {
+      const total = (counts.bullish || 0) + (counts.bearish || 0) + (counts.neutral || 0);
+      return `<span class="source-tag">${source} ${total}</span>`;
+    })
+    .join(" ");
+}
+
 function renderSignalLog(rows) {
   const body = document.getElementById("signal-log-body");
   body.innerHTML = "";
   if (!rows.length) {
-    body.innerHTML = '<tr><td colspan="6" class="muted">No signal changes logged yet - this fills in as BUY/SELL/HOLD calls change over time.</td></tr>';
+    body.innerHTML = '<tr><td colspan="7" class="muted">No signal changes logged yet - this fills in as BUY/SELL/HOLD calls change over time.</td></tr>';
     return;
   }
   rows.forEach((row) => {
@@ -421,6 +466,7 @@ function renderSignalLog(rows) {
       <td><span class="badge ${signalClass}">${row.signal}</span></td>
       <td>${new Date(row.logged_at).toLocaleString()}</td>
       <td class="num">${fmtMoney(row.price_at_signal)}</td>
+      <td>${sourceBadges(row.source_breakdown)}</td>
       <td>${resultPill(row.eval_4h)}</td>
       <td>${resultPill(row.eval_24h)}</td>
     `;

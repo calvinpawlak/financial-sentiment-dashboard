@@ -36,7 +36,7 @@ from storage.db import (
     init_db, get_conn, insert_price, insert_social, insert_news,
     insert_social_sentiment_agg,
 )
-from storage.queries import get_known_tickers, get_latest_prices, get_signal
+from storage.queries import get_known_tickers, get_latest_prices, get_signal, get_sentiment_summary_by_source
 from ingestion import prices, stocktwits, reddit_source, news, finnhub_source, google_news_source
 from processing import sentiment, signal_tracking
 
@@ -135,7 +135,10 @@ def run_cycle(mode: str = "full"):
         for ticker in get_known_tickers():
             signal_info = get_signal(ticker, hours=24)
             price_at_signal = current_prices.get(ticker, {}).get("price")
-            if signal_tracking.log_signal_if_changed(conn, ticker, signal_info, price_at_signal):
+            source_breakdown = get_sentiment_summary_by_source(ticker, hours=24)
+            if signal_tracking.log_signal_if_changed(
+                conn, ticker, signal_info, price_at_signal, source_breakdown=source_breakdown
+            ):
                 changed += 1
                 logger.info("Signal change logged for %s: %s", ticker, signal_info["signal"])
         graded = signal_tracking.evaluate_pending_signals(conn, current_prices)

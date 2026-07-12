@@ -5,10 +5,18 @@ Centralizes the SQL that report.py (and eventually the layer 4 dashboard)
 needs, so there's one place to fix/optimize queries instead of duplicated
 ad hoc SQL scattered across every consumer.
 """
+import json
+import math
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
 from storage.db import get_conn
+
+# Below this many graded BUY/SELL calls at a horizon, an accuracy percentage
+# is close to a coin flip dressed up as a stat - flagged so the dashboard can
+# show a caution instead of a bare, falsely-confident number (added
+# 2026-07-12 after reviewing the log with Calvin).
+MIN_GRADED_FOR_CONFIDENCE = 20
 
 
 def get_sentiment_summary(hours: int = 24) -> dict:
@@ -27,6 +35,31 @@ def get_sentiment_summary(hours: int = 24) -> dict:
     summary = defaultdict(lambda: {"bullish": 0, "bearish": 0, "neutral": 0})
     for ticker, label, count in rows:
         summary[ticker][label] = count
+    return dict(summary)
+
+
+def get_sentiment_summary_by_source(ticker: str, hours: int = 24) -> dict:
+    """Same as get_sentiment_summary(), but broken out by data source for a
+    single ticker - added 2026-07-12 so each logged BUY/SELL/HOLD call can
+    record which source(s) actually drove it (StockTwits chatter? Finnhub
+    news? Reddit?). Without this, the accuracy log can only be sliced by
+    ticker, not by which of the 5 ingestion sources produced the sentiment
+    behind a given call - which matters if some sources turn out to be
+    noise and others real signal.
+    Returns {source: {"bullish": n, "bearish": n, "neutral": n}}."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT source, label, COUNT(*)
+               FROM scored_sentiment
+               WHERE ticker = ? AND scored_at >= ?
+               GROUP BY source, label""",
+            (ticker, cutoff),
+        ).fetchall()
+
+    summary = defaultdict(lambda: {"bullish": 0, "bearish": 0, "neutral": 0})
+    for source, label, count in rows:
+        summary[source][label] = count
     return dict(summary)
 
 
@@ -124,6 +157,47 @@ def get_price_history(ticker: str, hours: int = 168) -> list:
     return [{"fetched_at": fetched_at, "price": price} for fetched_at, price in rows]
 
 
+def _direction_from_pct(pct: float) -> str:
+    if pct > 0:
+        return "UP"
+    if pct < 0:
+        return "DOWN"
+    return "FLAT"
+
+
+def get_price_change_over_window(ticker: str, hours: int) -> tuple:
+    """Price % change measured over the SAME lookback window as the
+    sentiment side of get_signal() - added 2026-07-12 to fix a real
+    inconsistency Calvin caught: the Signal's price component previously
+    always used yfinance's fixed day-over-day change_pct, even when the
+    dashboard's 1H/6H/etc. tab selected a much shorter sentiment window. A
+    1-hour sentiment read was being combined with a full day's price move.
+
+    Uses our own raw_prices samples (earliest vs latest inside the window)
+    so both halves of the Signal are measured on the same clock. Falls back
+    to the fixed day-change (with is_windowed=False) if there aren't yet at
+    least 2 in-window price samples - e.g. right after a fresh deploy, before
+    enough ingestion cycles have run to fill the window. That fallback is
+    imperfect but better than reporting UNKNOWN/HOLD for every ticker during
+    the first hour of a new install; is_windowed tells the caller (and the
+    dashboard) which measurement was actually used.
+
+    Returns (direction, pct_change, is_windowed). direction is
+    UP/DOWN/FLAT/UNKNOWN; pct_change is None only if no price data exists
+    at all yet for this ticker.
+    """
+    history = get_price_history(ticker, hours=hours)
+    if len(history) >= 2 and history[0]["price"]:
+        pct = (history[-1]["price"] - history[0]["price"]) / history[0]["price"] * 100
+        return _direction_from_pct(pct), pct, True
+
+    price_info = get_latest_prices().get(ticker, {})
+    day_change = price_info.get("day_change_pct")
+    if day_change is None:
+        return "UNKNOWN", None, False
+    return _direction_from_pct(day_change), day_change, False
+
+
 def get_known_tickers() -> list:
     """Distinct tickers actually present in the data, for populating the
     dashboard's ticker selector dynamically rather than hardcoding it."""
@@ -175,7 +249,7 @@ def get_signal_log(ticker: str = None, limit: int = 50) -> list:
     grading if evaluated yet (None if the horizon hasn't been reached, or a
     price wasn't available yet to grade it)."""
     query = """SELECT sl.id, sl.ticker, sl.signal, sl.sentiment_verdict, sl.price_direction,
-                      sl.reasoning, sl.price_at_signal, sl.logged_at
+                      sl.reasoning, sl.price_at_signal, sl.logged_at, sl.source_breakdown
                FROM signal_log sl"""
     params = []
     if ticker:
@@ -203,7 +277,11 @@ def get_signal_log(ticker: str = None, limit: int = 50) -> list:
                 }
 
     out = []
-    for id_, ticker_, signal, verdict, direction, reasoning, price_at_signal, logged_at in rows:
+    for id_, ticker_, signal, verdict, direction, reasoning, price_at_signal, logged_at, source_breakdown in rows:
+        try:
+            sources = json.loads(source_breakdown) if source_breakdown else None
+        except (TypeError, ValueError):
+            sources = None  # tolerate malformed/legacy values rather than 500ing the API
         out.append(
             {
                 "id": id_,
@@ -214,11 +292,30 @@ def get_signal_log(ticker: str = None, limit: int = 50) -> list:
                 "reasoning": reasoning,
                 "price_at_signal": price_at_signal,
                 "logged_at": logged_at,
+                "source_breakdown": sources,
                 "eval_4h": evals_by_signal_id[id_].get(4),
                 "eval_24h": evals_by_signal_id[id_].get(24),
             }
         )
     return out
+
+
+def _wilson_interval(correct: int, graded: int, z: float = 1.96) -> tuple:
+    """95% Wilson score confidence interval for a correct/graded proportion,
+    added 2026-07-12 - a bare accuracy percentage looks equally confident at
+    n=2 and n=200, which is misleading with a watchlist this small. Wilson
+    (rather than the simpler normal-approximation interval) holds up better
+    at small n and never produces an out-of-range bound. Returns
+    (lower_pct, upper_pct), or (None, None) if graded == 0."""
+    if graded == 0:
+        return None, None
+    phat = correct / graded
+    denom = 1 + z ** 2 / graded
+    center = phat + z ** 2 / (2 * graded)
+    margin = z * math.sqrt(phat * (1 - phat) / graded + z ** 2 / (4 * graded ** 2))
+    lower = max(0.0, (center - margin) / denom)
+    upper = min(1.0, (center + margin) / denom)
+    return round(lower * 100, 1), round(upper * 100, 1)
 
 
 def get_signal_accuracy_stats(horizon_hours: int = 24) -> dict:
@@ -228,10 +325,29 @@ def get_signal_accuracy_stats(horizon_hours: int = 24) -> dict:
     `accuracy_pct`, which is computed only over BUY/SELL calls, so a ticker
     that mostly sits at HOLD can't inflate or deflate its own accuracy
     number. `pending` counts signals not old enough (or not yet gradable
-    for lack of a current price) to have been evaluated at this horizon."""
+    for lack of a current price) to have been evaluated at this horizon.
+
+    Added 2026-07-12, after reviewing the log with Calvin, three things a
+    bare accuracy percentage was missing:
+      - `baseline_up_pct` / `baseline_n`: the fraction of ALL graded
+        evaluations at this horizon (BUY/SELL/HOLD alike) where price simply
+        went up. Markets drift upward over time, so a BUY-heavy rule can
+        look "accurate" purely by riding that drift, not because sentiment
+        adds real predictive value - compare accuracy_pct to this baseline
+        before crediting the signal itself.
+      - `accuracy_ci_low` / `accuracy_ci_high`: a 95% Wilson confidence
+        interval on the overall accuracy_pct, and `low_sample` (True below
+        MIN_GRADED_FOR_CONFIDENCE) so the dashboard can flag "not enough
+        calls yet to trust this number" instead of showing a falsely
+        precise percentage.
+      - `by_signal`: accuracy broken out separately for BUY vs SELL calls
+        (a confusion-matrix-style split), since a rule can be strong on
+        BUYs and weak on SELLs (or vice versa) and a single pooled number
+        hides that entirely.
+    """
     with get_conn() as conn:
         graded_rows = conn.execute(
-            """SELECT sl.ticker, se.correct
+            """SELECT sl.ticker, sl.signal, se.correct
                FROM signal_log sl
                JOIN signal_evaluations se
                    ON se.signal_log_id = sl.id AND se.horizon_hours = ?""",
@@ -244,29 +360,53 @@ def get_signal_accuracy_stats(horizon_hours: int = 24) -> dict:
                WHERE se.id IS NULL""",
             (horizon_hours,),
         ).fetchone()[0]
+        baseline_rows = conn.execute(
+            """SELECT price_change_pct FROM signal_evaluations
+               WHERE horizon_hours = ? AND price_change_pct IS NOT NULL""",
+            (horizon_hours,),
+        ).fetchall()
 
     def _new_bucket():
         return {"correct": 0, "incorrect": 0, "hold": 0}
 
     per_ticker = defaultdict(_new_bucket)
+    per_signal = {"BUY": _new_bucket(), "SELL": _new_bucket()}
     overall = _new_bucket()
-    for ticker, correct in graded_rows:
+    for ticker, signal, correct in graded_rows:
         bucket = "hold" if correct is None else ("correct" if correct == 1 else "incorrect")
         per_ticker[ticker][bucket] += 1
         overall[bucket] += 1
+        if signal in per_signal:
+            per_signal[signal][bucket] += 1
 
     def _accuracy_pct(counts):
         graded = counts["correct"] + counts["incorrect"]
         return round(counts["correct"] / graded * 100, 1) if graded else None
 
+    def _with_ci(counts):
+        graded = counts["correct"] + counts["incorrect"]
+        ci_low, ci_high = _wilson_interval(counts["correct"], graded)
+        return {
+            **counts,
+            "accuracy_pct": _accuracy_pct(counts),
+            "graded": graded,
+            "accuracy_ci_low": ci_low,
+            "accuracy_ci_high": ci_high,
+            "low_sample": graded < MIN_GRADED_FOR_CONFIDENCE,
+        }
+
+    baseline_total = len(baseline_rows)
+    baseline_up = sum(1 for (pct,) in baseline_rows if pct is not None and pct > 0)
+    baseline_up_pct = round(baseline_up / baseline_total * 100, 1) if baseline_total else None
+
     return {
         "horizon_hours": horizon_hours,
-        "correct": overall["correct"],
-        "incorrect": overall["incorrect"],
-        "hold": overall["hold"],
-        "accuracy_pct": _accuracy_pct(overall),
+        **_with_ci(overall),
         "pending": pending,
-        "per_ticker": {t: {**counts, "accuracy_pct": _accuracy_pct(counts)} for t, counts in per_ticker.items()},
+        "baseline_up_pct": baseline_up_pct,
+        "baseline_n": baseline_total,
+        "by_signal": {sig: _with_ci(counts) for sig, counts in per_signal.items()},
+        "per_ticker": {t: _with_ci(counts) for t, counts in per_ticker.items()},
     }
 
 
@@ -278,7 +418,11 @@ def get_signal(ticker: str, hours: int = 24) -> dict:
     sentiment alone (which is noisy and easy to game/misjudge on its own):
       - the existing sentiment verdict (bullish/bearish/mixed, from
         verdict_for) over the given lookback window
-      - the ticker's most recent day-over-day price direction
+      - the ticker's price direction over that SAME window (fixed
+        2026-07-12 - this used to always be yfinance's fixed day-over-day
+        change regardless of the selected window, so a 1-hour sentiment
+        read could get combined with a full day's price move; see
+        get_price_change_over_window)
 
     Rule (conservative by design - HOLD is the default unless both signals
     agree):
@@ -292,33 +436,31 @@ def get_signal(ticker: str, hours: int = 24) -> dict:
     counts = get_sentiment_summary(hours=hours).get(ticker, {"bullish": 0, "bearish": 0, "neutral": 0})
     verdict = verdict_for(counts)
 
-    price_info = get_latest_prices().get(ticker, {})
-    day_change = price_info.get("day_change_pct")
-    if day_change is None:
-        price_direction = "UNKNOWN"
-    elif day_change > 0:
-        price_direction = "UP"
-    elif day_change < 0:
-        price_direction = "DOWN"
-    else:
-        price_direction = "FLAT"
+    price_direction, price_change_pct, is_windowed = get_price_change_over_window(ticker, hours)
+    window_note = (
+        f"{price_change_pct:+.2f}% over this window" if is_windowed and price_change_pct is not None
+        else f"{price_change_pct:+.2f}% day change - not enough in-window price history yet" if price_change_pct is not None
+        else "no price data yet"
+    )
 
     if verdict == "BULLISH" and price_direction in ("UP", "FLAT"):
         signal = "BUY"
-        reasoning = "Sentiment is net bullish and price isn't falling."
+        reasoning = f"Sentiment is net bullish and price isn't falling ({window_note})."
     elif verdict == "BEARISH" and price_direction in ("DOWN", "FLAT"):
         signal = "SELL"
-        reasoning = "Sentiment is net bearish and price isn't rising."
+        reasoning = f"Sentiment is net bearish and price isn't rising ({window_note})."
     elif verdict == "NO DATA" or price_direction == "UNKNOWN":
         signal = "HOLD"
         reasoning = "Not enough data yet to form a signal."
     else:
         signal = "HOLD"
-        reasoning = "Sentiment and price direction disagree, or sentiment is mixed - conflicting signals."
+        reasoning = f"Sentiment and price direction disagree, or sentiment is mixed - conflicting signals ({window_note})."
 
     return {
         "signal": signal,
         "sentiment_verdict": verdict,
         "price_direction": price_direction,
+        "price_change_pct": price_change_pct,
+        "price_change_is_windowed": is_windowed,
         "reasoning": reasoning,
     }

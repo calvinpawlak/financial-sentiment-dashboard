@@ -119,6 +119,9 @@
     <p class="muted accuracy-note">
       HOLD is not a directional call, so it's logged but never scored correct/incorrect - accuracy % is
       computed only over BUY/SELL calls. "Pending" means the call hasn't reached that grading horizon yet.
+      The "baseline" line shows how often price simply rose anyway, since markets drift upward over time and
+      that alone can make a BUY-heavy rule look "accurate." The confidence range and low-sample warning exist
+      because a percentage from only a few calls is close to a coin flip, not a real track record yet.
       This is a track record of a mechanical heuristic, not investment performance - do your own research.
     </p>
     <table id="signal-log-table">
@@ -128,6 +131,7 @@
           <th>Call</th>
           <th>Logged</th>
           <th>Price @ call</th>
+          <th>Sources</th>
           <th>4h result</th>
           <th>24h result</th>
         </tr>

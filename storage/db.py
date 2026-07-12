@@ -49,7 +49,13 @@ CREATE TABLE IF NOT EXISTS signal_log (
     price_direction TEXT NOT NULL,
     reasoning TEXT,
     price_at_signal REAL,
-    logged_at TEXT NOT NULL
+    logged_at TEXT NOT NULL,
+    -- Added 2026-07-12 (Calvin asked whether data sources need revising
+    -- based on results): JSON string of {source: {bullish,bearish,neutral}}
+    -- at the moment this signal was logged, so accuracy can later be sliced
+    -- by which source(s) drove a given call, not just by ticker. NULL for
+    -- rows logged before this column existed (see the migration in init_db).
+    source_breakdown TEXT
 );
 
 -- Each logged signal is graded at two horizons (4h and 24h) once enough
@@ -257,11 +263,31 @@ class _PGConnAdapter:
         self._conn.close()
 
 
+def _add_column_if_missing(conn, table, column, coltype):
+    """Migrate an existing database created before `column` existed.
+    CREATE TABLE IF NOT EXISTS (used for the base schema above) is a no-op
+    on a table that already exists, so a brand-new column added to the
+    schema later needs an explicit ALTER TABLE for anyone upgrading in
+    place (added 2026-07-12 for signal_log.source_breakdown, since Calvin's
+    local SQLite file and Neon Postgres database both already had signal_log
+    rows before this column was introduced)."""
+    if IS_POSTGRES:
+        # Postgres 9.6+ supports IF NOT EXISTS directly - no error to catch.
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {coltype}")
+    else:
+        try:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}")
+        except sqlite3.OperationalError as exc:
+            if "duplicate column name" not in str(exc):
+                raise
+
+
 def init_db():
     if not IS_POSTGRES:
         os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     with get_conn() as conn:
         conn.executescript(SCHEMA_POSTGRES if IS_POSTGRES else SCHEMA)
+        _add_column_if_missing(conn, "signal_log", "source_breakdown", "TEXT")
 
 
 @contextmanager
@@ -374,17 +400,18 @@ def insert_scored_sentiment(conn, origin_table, origin_id, ticker, source, text,
     )
 
 
-def insert_signal_log(conn, ticker, signal, sentiment_verdict, price_direction, reasoning, price_at_signal, logged_at):
+def insert_signal_log(conn, ticker, signal, sentiment_verdict, price_direction, reasoning, price_at_signal, logged_at, source_breakdown=None):
     """Plain INSERT (no dedup needed - processing/signal_tracking.py decides
     whether a new row is warranted before calling this). Evaluation later
     finds rows to grade via a SELECT/JOIN against signal_evaluations
     (see evaluate_pending_signals), so there's no need to hand back the
-    new row's id here."""
+    new row's id here. source_breakdown is a pre-serialized JSON string
+    (or None) - see processing/signal_tracking.py."""
     conn.execute(
         """INSERT INTO signal_log
-           (ticker, signal, sentiment_verdict, price_direction, reasoning, price_at_signal, logged_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (ticker, signal, sentiment_verdict, price_direction, reasoning, price_at_signal, logged_at),
+           (ticker, signal, sentiment_verdict, price_direction, reasoning, price_at_signal, logged_at, source_breakdown)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (ticker, signal, sentiment_verdict, price_direction, reasoning, price_at_signal, logged_at, source_breakdown),
     )
 
 

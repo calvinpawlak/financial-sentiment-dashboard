@@ -172,7 +172,22 @@ td.num { font-variant-numeric: tabular-nums; }
 .accuracy-card .accuracy-pct.bad { color: var(--red); }
 .accuracy-card .accuracy-pct.none { color: var(--muted); }
 .accuracy-card .accuracy-detail { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.accuracy-card .accuracy-detail.muted { color: var(--muted); opacity: 0.85; }
+.accuracy-warning {
+  margin-top: 8px; font-size: 11px; color: var(--amber);
+  background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3);
+  border-radius: 6px; padding: 6px 8px;
+}
+.accuracy-by-signal { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.accuracy-subrow { font-size: 12px; color: var(--text); margin-top: 2px; }
+.accuracy-subrow.muted { color: var(--muted); }
 .accuracy-note { margin: 0 0 14px; font-size: 12px; line-height: 1.5; }
+.source-tag {
+  display: inline-block; font-size: 10px; font-weight: 600; color: var(--muted);
+  background: var(--panel-alt); border: 1px solid var(--border);
+  border-radius: 999px; padding: 1px 7px; margin: 1px 3px 1px 0;
+  text-transform: uppercase; letter-spacing: 0.3px;
+}
 .result-pill { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
 .result-pill.correct { background: rgba(34,197,94,0.15); color: var(--green); }
 .result-pill.incorrect { background: rgba(239,68,68,0.15); color: var(--red); }

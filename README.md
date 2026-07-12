@@ -311,8 +311,22 @@ elsewhere on the dashboard:
 
 1. The **sentiment verdict** for the ticker over your selected lookback
    window (BULLISH / BEARISH / MIXED-NEUTRAL / NO DATA, from `verdict_for()`)
-2. The ticker's **latest day-over-day price direction** (UP / DOWN / FLAT /
-   UNKNOWN)
+2. The ticker's **price direction over that same lookback window** (UP /
+   DOWN / FLAT / UNKNOWN)
+
+**Fixed 2026-07-12 — the two signals used to be measured on different
+clocks.** Calvin asked for a logic review, and this was the real bug it
+turned up: price direction always used yfinance's fixed day-over-day
+change, regardless of which lookback tab (1H/6H/.../7D) was selected for
+sentiment. Picking the 1H tab meant a 1-hour sentiment read was being
+combined with a full day's price move. `get_price_change_over_window()` in
+`storage/queries.py` fixes this by measuring price change over the same
+window as sentiment, using our own `raw_prices` samples. If there aren't
+yet at least 2 in-window samples (e.g. right after a fresh deploy), it
+falls back to the day-change with a note in the "why" text saying so,
+rather than silently mixing timeframes. The reasoning text on the dashboard
+now always states the actual price move and window used, e.g. "Sentiment is
+net bullish and price isn't falling (+0.42% over this window)."
 
 Rule, deliberately conservative — HOLD unless both signals agree:
 
@@ -378,6 +392,47 @@ a signal that never changes (no new rows logged), a flip that gets logged
 once, correct/incorrect grading at both horizons for BUY and SELL, a HOLD
 row correctly left ungraded, and re-running evaluation twice without
 double-grading the same row.
+
+**Revised 2026-07-12 after a logic review Calvin asked for**, to make the
+accuracy numbers harder to misread once real graded history starts
+accumulating:
+
+- **Baseline comparison** — each accuracy card now also shows "price rose
+  in X% of all graded windows anyway." Markets drift upward over time, so a
+  BUY-heavy rule can look "accurate" purely by riding that drift, not
+  because sentiment adds real predictive value. Compare the rule's own
+  accuracy_pct to this baseline before crediting the signal itself — if
+  they're close, the rule isn't beating chance.
+- **95% confidence interval (Wilson score)** on the accuracy percentage,
+  plus a **low-sample warning** below `MIN_GRADED_FOR_CONFIDENCE = 20`
+  graded calls (in `storage/queries.py`). A bare "100%" from 1 graded call
+  looks equally confident as a real 100-call track record without this -
+  the interval and warning make the uncertainty visible instead of implicit.
+- **BUY vs SELL accuracy shown separately** (a confusion-matrix-style
+  split), since a rule can be strong on BUYs and weak on SELLs (or the
+  reverse) and one pooled number hides that entirely.
+- **Per-source attribution** — `signal_log` now records which data
+  source(s) (StockTwits, Reddit, Finnhub, Google News, FinViz) actually made
+  up the sentiment behind each logged call (`get_sentiment_summary_by_source()`
+  in `storage/queries.py`), shown as small tags in the signal log table.
+  This doesn't change any behavior yet, but it's what makes it possible to
+  eventually answer "is StockTwits chatter actually predictive, or is it
+  just noise?" once enough history accumulates - research on this pulled up
+  during the review suggests different platforms may have meaningfully
+  different natural prediction horizons (e.g. fast-moving chatter vs.
+  slower-moving news), which a single flat 4h/24h grading window won't
+  automatically account for. Existing databases (local SQLite and Neon)
+  are migrated in place via an `ALTER TABLE ... ADD COLUMN` in `init_db()` -
+  old rows keep `source_breakdown = NULL` rather than erroring.
+
+All of the above verified offline: the windowed price-direction fix against
+synthetic price histories (windowed calc, fallback-to-day-change, and
+no-data cases), the baseline/CI/BUY-SELL-split math against a hand-built
+signal_evaluations fixture, source-breakdown round-tripping through
+`log_signal_if_changed()`/`get_signal_log()`, and the column migration
+against a simulated pre-migration database (old rows preserved with a NULL
+`source_breakdown`, new rows able to use it immediately, migration safely
+re-runnable).
 
 ## Hosting it publicly
 

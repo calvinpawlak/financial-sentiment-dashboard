@@ -27,6 +27,7 @@ stock"). Two parts:
    cadence this is accurate to within one cycle, not to the second, and
    that approximation is documented here rather than silently assumed.
 """
+import json
 import logging
 from datetime import datetime, timedelta, timezone
 
@@ -48,9 +49,14 @@ def _get_last_signal(conn, ticker):
     return row[0] if row else None
 
 
-def log_signal_if_changed(conn, ticker, signal_info, price_at_signal, logged_at=None):
+def log_signal_if_changed(conn, ticker, signal_info, price_at_signal, logged_at=None, source_breakdown=None):
     """signal_info is the dict returned by storage.queries.get_signal():
-    {"signal", "sentiment_verdict", "price_direction", "reasoning"}.
+    {"signal", "sentiment_verdict", "price_direction", "reasoning", ...}.
+    source_breakdown (added 2026-07-12, Calvin asked whether data sources
+    need revising based on results) is the dict from
+    storage.queries.get_sentiment_summary_by_source() - which source(s)
+    made up the sentiment verdict behind this call, recorded at logging
+    time so accuracy can later be sliced by source, not just by ticker.
     Returns True if a new row was logged, False if the signal is unchanged
     from the last logged entry for this ticker (no-op)."""
     logged_at = logged_at or datetime.now(timezone.utc).isoformat()
@@ -67,6 +73,7 @@ def log_signal_if_changed(conn, ticker, signal_info, price_at_signal, logged_at=
         reasoning=signal_info["reasoning"],
         price_at_signal=price_at_signal,
         logged_at=logged_at,
+        source_breakdown=json.dumps(source_breakdown) if source_breakdown else None,
     )
     return True
 
