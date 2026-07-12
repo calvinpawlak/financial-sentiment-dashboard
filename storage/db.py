@@ -51,10 +51,11 @@ CREATE TABLE IF NOT EXISTS signal_log (
     price_at_signal REAL,
     logged_at TEXT NOT NULL,
     -- Added 2026-07-12 (Calvin asked whether data sources need revising
-    -- based on results): JSON string of {source: {bullish,bearish,neutral}}
-    -- at the moment this signal was logged, so accuracy can later be sliced
-    -- by which source(s) drove a given call, not just by ticker. NULL for
-    -- rows logged before this column existed (see the migration in init_db).
+    -- based on results): JSON string mapping each source name to its own
+    -- bullish/bearish/neutral counts, captured at the moment this signal
+    -- was logged, so accuracy can later be sliced by which source(s) drove
+    -- a given call, not just by ticker. NULL for rows logged before this
+    -- column existed (see the migration in init_db).
     source_breakdown TEXT
 );
 
