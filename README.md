@@ -141,6 +141,17 @@ intervals or move folders. If you get "Access Denied," re-run PowerShell as
 Administrator first. If you have the old single-task version from before
 2026-07-12, remove it: `Unregister-ScheduledTask -TaskName 'FinancialSentimentDashboard-Ingestion'`.
 
+**Runs hidden (fixed 2026-07-12)** — Calvin noticed a command prompt window
+flashing open and closing every few minutes. That's a well-known Windows
+quirk: Task Scheduler briefly allocates a visible console for any task
+whose action is `python.exe` directly, with no setting to suppress it. The
+script now generates `run_hidden.vbs` (a tiny launcher) and points both
+tasks at `wscript.exe` running it instead - `wscript.exe` has no console of
+its own, and its `.Run` method with window style `0` launches Python fully
+hidden. If you already had the tasks registered from before this fix,
+just re-run `setup_task_scheduler.ps1` once to replace them with the
+hidden-window version - it's safe to re-run and does this automatically.
+
 **Windows (Task Scheduler) — manual, if you'd rather click through it:**
 Create two tasks:
 1. Trigger: repeat every 5 minutes. Action: `python.exe` with argument
