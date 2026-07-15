@@ -294,6 +294,24 @@ function renderPosts(detail) {
   });
 }
 
+async function loadEvents() {
+  const list = document.getElementById("events-list");
+  if (!list) return;
+  try {
+    const suffix = state.selectedTicker ? `?ticker=${state.selectedTicker}` : "";
+    const events = await fetchJSON(`/api/events${suffix}`);
+    list.innerHTML = events.length ? "" : '<li class="muted">No official events ingested yet.</li>';
+    events.forEach((event) => {
+      const li = document.createElement("li");
+      const label = event.ticker ? `${event.ticker} · ${event.category}` : event.category;
+      li.innerHTML = `<div class="post-meta"><span class="post-source">${escapeHtml(event.source)}</span><span>${escapeHtml(label)}</span><span>${event.published_at ? new Date(event.published_at).toLocaleString() : ""}</span></div><div class="post-text"><a href="${encodeURI(event.link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(event.title)}</a></div>`;
+      list.appendChild(li);
+    });
+  } catch (e) {
+    console.error("Failed to load official events:", e);
+  }
+}
+
 function escapeHtml(str) {
   const div = document.createElement("div");
   div.textContent = str;
@@ -307,6 +325,7 @@ async function selectTicker(ticker) {
   document.querySelectorAll(".kpi-card").forEach((c) => c.classList.toggle("selected", c.dataset.ticker === ticker));
   document.querySelectorAll("#watchlist-body tr").forEach((r) => r.classList.toggle("selected", r.dataset.ticker === ticker));
   await loadDetail();
+  await loadEvents();
 }
 
 async function loadDetail() {
@@ -500,6 +519,7 @@ function setupTabs() {
 function refreshAll() {
   loadOverview();
   loadAccuracyLog();
+  loadEvents();
 }
 
 setupTabs();

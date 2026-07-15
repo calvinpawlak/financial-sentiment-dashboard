@@ -80,6 +80,19 @@ REDDIT_USER_AGENT = "financial-sentiment-dashboard/0.1 by u/your_username"
 # this more often than every 5 minutes or you'll start getting 429s.
 STOCKTWITS_MESSAGE_LIMIT = 30
 
+# --- Bluesky -----------------------------------------------------------
+# Official authenticated ticker search, used as the social-source successor
+# to StockTwits. Credentials are a free account handle + app password in .env.
+BLUESKY_POST_LIMIT = 30
+
+# --- Authoritative event sources --------------------------------------
+# SEC asks automated clients to identify themselves with an organization
+# and contact email. Set SEC_USER_AGENT in .env (not a secret), for example:
+# "Financial Sentiment Dashboard contact@example.com".
+SEC_USER_AGENT = os.environ.get("SEC_USER_AGENT", "").strip()
+SEC_FORMS = {"8-K", "10-K", "10-Q", "6-K", "20-F"}
+SEC_FILINGS_PER_TICKER = 10
+
 # --- Google News RSS (added 2026-07-12) ---------------------------------
 # No key required. Caps headlines per ticker per cycle - with three news
 # sources now (FinViz, Finnhub, Google News) all deduping into the same

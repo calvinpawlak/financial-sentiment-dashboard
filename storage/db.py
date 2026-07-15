@@ -112,6 +112,17 @@ CREATE TABLE IF NOT EXISTS raw_news (
     ingested_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS raw_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticker TEXT,
+    source TEXT NOT NULL,
+    category TEXT NOT NULL,
+    title TEXT NOT NULL,
+    link TEXT UNIQUE,
+    published_at TEXT,
+    ingested_at TEXT NOT NULL
+);
+
 -- Finnhub's /stock/social-sentiment endpoint returns PRE-AGGREGATED
 -- Reddit/Twitter mention counts + sentiment scores per ticker per period -
 -- not per-post text, so it can't flow through the VADER scoring pipeline
@@ -157,6 +168,7 @@ CREATE INDEX IF NOT EXISTS idx_scored_sentiment_ticker_time ON scored_sentiment(
 CREATE INDEX IF NOT EXISTS idx_scored_sentiment_time ON scored_sentiment(scored_at);
 CREATE INDEX IF NOT EXISTS idx_raw_social_ticker ON raw_social(ticker);
 CREATE INDEX IF NOT EXISTS idx_raw_news_ticker ON raw_news(ticker);
+CREATE INDEX IF NOT EXISTS idx_raw_events_ticker_time ON raw_events(ticker, published_at);
 CREATE INDEX IF NOT EXISTS idx_raw_prices_ticker_time ON raw_prices(ticker, fetched_at);
 CREATE INDEX IF NOT EXISTS idx_social_sentiment_agg_ticker ON raw_social_sentiment_agg(ticker, fetched_at);
 """ + _SIGNAL_TRACKING_TABLES.format(id_pk="INTEGER PRIMARY KEY AUTOINCREMENT")
@@ -198,6 +210,17 @@ CREATE TABLE IF NOT EXISTS raw_news (
     ingested_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS raw_events (
+    id SERIAL PRIMARY KEY,
+    ticker TEXT,
+    source TEXT NOT NULL,
+    category TEXT NOT NULL,
+    title TEXT NOT NULL,
+    link TEXT UNIQUE,
+    published_at TEXT,
+    ingested_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS raw_social_sentiment_agg (
     id SERIAL PRIMARY KEY,
     ticker TEXT NOT NULL,
@@ -232,6 +255,7 @@ CREATE INDEX IF NOT EXISTS idx_scored_sentiment_ticker_time ON scored_sentiment(
 CREATE INDEX IF NOT EXISTS idx_scored_sentiment_time ON scored_sentiment(scored_at);
 CREATE INDEX IF NOT EXISTS idx_raw_social_ticker ON raw_social(ticker);
 CREATE INDEX IF NOT EXISTS idx_raw_news_ticker ON raw_news(ticker);
+CREATE INDEX IF NOT EXISTS idx_raw_events_ticker_time ON raw_events(ticker, published_at);
 CREATE INDEX IF NOT EXISTS idx_raw_prices_ticker_time ON raw_prices(ticker, fetched_at);
 CREATE INDEX IF NOT EXISTS idx_social_sentiment_agg_ticker ON raw_social_sentiment_agg(ticker, fetched_at);
 """ + _SIGNAL_TRACKING_TABLES.format(id_pk="SERIAL PRIMARY KEY")
@@ -355,6 +379,18 @@ def insert_news(conn, ticker, source, title, link, published_at, ingested_at):
            (ticker, source, title, link, published_at, ingested_at)
            VALUES (?, ?, ?, ?, ?, ?) {ignore_clause}""",
         (ticker, source, title, link, published_at, ingested_at),
+    )
+
+
+def insert_event(conn, ticker, source, category, title, link, published_at, ingested_at):
+    """Store authoritative events separately from sentiment-scored chatter/news."""
+    ignore_clause = "ON CONFLICT (link) DO NOTHING" if IS_POSTGRES else ""
+    or_ignore = "" if IS_POSTGRES else "OR IGNORE "
+    conn.execute(
+        f"""INSERT {or_ignore}INTO raw_events
+           (ticker, source, category, title, link, published_at, ingested_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?) {ignore_clause}""",
+        (ticker, source, category, title, link, published_at, ingested_at),
     )
 
 

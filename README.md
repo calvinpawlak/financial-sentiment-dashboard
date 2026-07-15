@@ -93,6 +93,7 @@ list and appends the results to a local SQLite database:
 | [FinViz](https://finviz.com) | Per-ticker news headlines (scraped) | Free | HTML scrape — see caveat below |
 | [Finnhub](https://finnhub.io) | Company news headlines + Finnhub's own aggregated Reddit/Twitter mention & sentiment rollup | Free tier, needs a signup key | 60 calls/min as of mid-2026 — see setup below. **Optional**, skipped cleanly without a key |
 | Google News (unofficial RSS) | Per-ticker news headlines | Free, no key | Unofficial feed — see caveat below |
+| [Bluesky](https://bsky.app) | Public posts matching ticker cashtags | Free account + app password | Official authenticated API; replaces unavailable StockTwits coverage |
 
 No X (Twitter) or Instagram integration is included directly — Instagram
 has no practical API for pulling public post/comment sentiment, and X's own
@@ -180,6 +181,22 @@ Two things worth knowing:
 
 Until you add a key, leave `.env` as-is — Finnhub ingestion is skipped
 cleanly, same pattern as pending Reddit access.
+
+### Bluesky credentials (recommended social replacement)
+
+Bluesky ticker search uses the official authenticated API. Create a free
+Bluesky account, then generate an app password under **Settings → Privacy
+and Security → App passwords**. Add the handle and app password to `.env`:
+
+```text
+BLUESKY_HANDLE=your-handle.bsky.social
+BLUESKY_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx
+```
+
+Use an app password, never the account's primary password. Bluesky runs in
+the 5-minute Fast group, stores posts as `source=bluesky`, and feeds them
+through the same VADER scoring, deduplication, Signal, and source-attribution
+pipeline as the other social sources.
 
 ## Running it
 

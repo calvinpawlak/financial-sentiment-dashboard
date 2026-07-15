@@ -37,6 +37,7 @@ from storage.queries import (
     get_latest_social_sentiment_agg,
     get_signal_log,
     get_signal_accuracy_stats,
+    get_recent_events,
 )
 
 app = Flask(__name__, static_folder="static", static_url_path="")
@@ -144,6 +145,12 @@ def api_signal_log():
         limit = 50
     limit = max(1, min(limit, 200))  # sane bounds regardless of what's requested
     return jsonify(get_signal_log(ticker=ticker, limit=limit))
+
+
+@app.route("/api/events")
+def api_events():
+    ticker = request.args.get("ticker") or None
+    return jsonify(get_recent_events(ticker=ticker.upper() if ticker else None, limit=50))
 
 
 if __name__ == "__main__":

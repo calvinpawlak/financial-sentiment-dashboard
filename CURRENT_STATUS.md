@@ -6,6 +6,11 @@ Written 2026-07-12, at the point of migrating this project from Claude
 
 ## What's completed
 
+- **New sources (2026-07-15):** Bluesky authenticated ticker search is live
+  for all 9 tickers. Federal Reserve official RSS is live. SEC EDGAR support
+  is implemented but awaits the required fair-access contact identifier.
+  Official events use `raw_events` and are excluded from sentiment scoring.
+
 - **Codex recovery validation (2026-07-15):** Python 3.12 virtual
   environment installed, direct dependencies pinned, `.env` loading
   centralized for every entry point, local SQLite backed up and migrated,
@@ -63,6 +68,9 @@ Written 2026-07-12, at the point of migrating this project from Claude
 
 ## Current blockers
 
+- **SEC EDGAR identification resolved (2026-07-15):** `SEC_USER_AGENT` is
+  configured locally and a complete slow cycle stored 58 filing events.
+
 - **Reddit API access** - gated behind Reddit's "Responsible Builder
   Policy" manual approval; status as of this writing is still pending, no
   fixed timeline. Not a blocker to the rest of the pipeline, which runs
@@ -73,6 +81,9 @@ Written 2026-07-12, at the point of migrating this project from Claude
   the first denial each cycle and continues with prices/news; do not replace
   it with scraping, which StockTwits' current terms prohibit without
   authorization.
+- **Bluesky replacement:** implementation completed 2026-07-15 and covered
+  by offline authentication/search-shape tests. Live activation is waiting
+  only for Calvin to add a Bluesky handle and app password to `.env`.
 
 ## Unresolved questions
 

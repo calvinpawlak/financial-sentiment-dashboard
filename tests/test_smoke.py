@@ -42,6 +42,7 @@ class OfflineSmokeTests(unittest.TestCase):
                 "signal_log",
                 "scored_sentiment",
                 "raw_social_sentiment_agg",
+                "raw_events",
                 "raw_news",
                 "raw_social",
                 "raw_prices",
@@ -111,6 +112,7 @@ class OfflineSmokeTests(unittest.TestCase):
             "/api/ticker/test?hours=24",
             "/api/accuracy",
             "/api/signal-log?limit=5",
+            "/api/events",
         ):
             with self.subTest(url=url):
                 response = client.get(url)
@@ -128,6 +130,63 @@ class OfflineSmokeTests(unittest.TestCase):
 
         self.assertEqual(messages, [])
         self.assertEqual(request_get.call_count, 1)
+
+    def test_bluesky_authenticated_search_shape(self):
+        from ingestion import bluesky_source
+
+        session_response = Mock()
+        session_response.raise_for_status.return_value = None
+        session_response.json.return_value = {"accessJwt": "test-token"}
+        search_response = Mock()
+        search_response.raise_for_status.return_value = None
+        search_response.json.return_value = {
+            "posts": [
+                {
+                    "uri": "at://did:plc:test/app.bsky.feed.post/abc123",
+                    "author": {"handle": "investor.example"},
+                    "record": {
+                        "text": "$TEST looks bullish",
+                        "createdAt": "2026-07-15T12:00:00Z",
+                    },
+                }
+            ]
+        }
+
+        with patch.dict(
+            os.environ,
+            {"BLUESKY_HANDLE": "test.example", "BLUESKY_APP_PASSWORD": "app-password"},
+        ), patch.object(bluesky_source.requests, "post", return_value=session_response) as post, patch.object(
+            bluesky_source.requests, "get", return_value=search_response
+        ) as get:
+            posts = bluesky_source.fetch_posts(["TEST"], limit=5)
+
+        self.assertEqual(len(posts), 1)
+        self.assertEqual(posts[0]["source"], "bluesky")
+        self.assertEqual(posts[0]["external_id"], "at://did:plc:test/app.bsky.feed.post/abc123")
+        self.assertIn("investor.example", posts[0]["url"])
+        self.assertEqual(post.call_count, 1)
+        self.assertEqual(get.call_count, 1)
+
+    def test_authoritative_event_storage_and_query(self):
+        from storage.queries import get_recent_events
+        now = datetime.now(timezone.utc).isoformat()
+        with db.get_conn() as conn:
+            db.insert_event(conn, "TEST", "sec_edgar", "8-K", "Test filing", "https://example.test/filing", now, now)
+            db.insert_event(conn, None, "federal_reserve", "monetary_policy", "Policy release", "https://example.test/fed", now, now)
+            db.insert_event(conn, "TEST", "sec_edgar", "8-K", "Duplicate", "https://example.test/filing", now, now)
+        events = get_recent_events(ticker="TEST")
+        self.assertEqual(len(events), 2)
+        self.assertEqual({event["source"] for event in events}, {"sec_edgar", "federal_reserve"})
+
+    def test_federal_reserve_rss_shape(self):
+        from ingestion import federal_reserve_source
+        rss = b"""<rss><channel><item><title>Policy update</title><link>https://example.test/policy</link><pubDate>Wed, 15 Jul 2026 12:00:00 GMT</pubDate></item></channel></rss>"""
+        response = Mock(content=rss)
+        response.raise_for_status.return_value = None
+        with patch.object(federal_reserve_source.requests, "get", return_value=response):
+            events = federal_reserve_source.fetch_events(limit_per_feed=1)
+        self.assertEqual(len(events), 3)
+        self.assertEqual({event["category"] for event in events}, set(federal_reserve_source.FEEDS))
 
 
 if __name__ == "__main__":

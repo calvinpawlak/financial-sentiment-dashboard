@@ -63,6 +63,24 @@ def get_sentiment_summary_by_source(ticker: str, hours: int = 24) -> dict:
     return dict(summary)
 
 
+def get_recent_events(ticker=None, limit: int = 50) -> list:
+    """Recent authoritative SEC and macro events; macro rows have no ticker."""
+    with get_conn() as conn:
+        if ticker:
+            rows = conn.execute(
+                """SELECT ticker, source, category, title, link, published_at
+                   FROM raw_events WHERE ticker = ? OR ticker IS NULL
+                   ORDER BY published_at DESC LIMIT ?""", (ticker, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """SELECT ticker, source, category, title, link, published_at
+                   FROM raw_events ORDER BY published_at DESC LIMIT ?""", (limit,),
+            ).fetchall()
+    keys = ("ticker", "source", "category", "title", "link", "published_at")
+    return [dict(zip(keys, row)) for row in rows]
+
+
 def verdict_for(counts: dict) -> str:
     """Simple lean label from a {"bullish": n, "bearish": n, "neutral": n}
     count dict - a >10 percentage-point gap either way, else mixed."""

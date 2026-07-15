@@ -40,6 +40,21 @@ Written 2026-07-12.
   and returns no StockTwits rows for that cycle. Prices and all news sources
   continue normally. Do not work around this by scraping the website.
 
+## Bluesky (social chatter)
+
+- **Purpose:** official-API replacement for StockTwits-style ticker chatter.
+- **Type:** Bluesky/AT Protocol authenticated REST API.
+- **Permissions/auth:** free Bluesky account plus `BLUESKY_HANDLE` and an
+  app-specific `BLUESKY_APP_PASSWORD` in `.env`. Never use the primary
+  account password.
+- **Where used:** `ingestion/bluesky_source.py` and the Fast ingestion cycle.
+- **Typical operation:** authenticate once per cycle, then search the latest
+  public posts for each ticker cashtag; rows deduplicate by AT URI.
+- **How to test it works:** run `.\.venv\Scripts\python.exe main.py
+  --fast-only` and look for `Fetched N Bluesky posts`.
+- **Graceful degradation:** missing credentials produce one warning and do
+  not affect prices, Finnhub, or other sources.
+
 ## Reddit (PRAW)
 
 - **Purpose:** posts mentioning the tickers from r/wallstreetbets,
@@ -211,6 +226,18 @@ Written 2026-07-12.
   browse tables.
 
 ---
+
+## Bluesky, SEC EDGAR, and Federal Reserve (added 2026-07-15)
+
+- **Bluesky:** official authenticated AT Protocol search. Requires
+  `BLUESKY_HANDLE` and a Bluesky app password in `.env`; verified live and
+  writing scored social rows for all tracked tickers.
+- **SEC EDGAR:** official submissions JSON API. No API key or paid account,
+  but SEC fair-access rules require `SEC_USER_AGENT` to identify this app and
+  provide a contact email. Filings are stored in `raw_events`, not sentiment.
+- **Federal Reserve:** official press-release, monetary-policy, and speech RSS
+  feeds. No key or account. Macro events are stored in `raw_events` with a
+  null ticker and are not sentiment-scored.
 
 ## Not currently connected (mentioned for completeness)
 

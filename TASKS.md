@@ -5,6 +5,9 @@ to ChatGPT/Codex.
 
 ## Now
 
+- [ ] Add `BLUESKY_HANDLE` and `BLUESKY_APP_PASSWORD` to local `.env`, then
+  live-test the new Bluesky Fast-cycle source.
+
 - [ ] Finish migrating this project to ChatGPT/Codex - this document set is
   part of that (see `CURRENT_STATUS.md` for the full picture).
 - [ ] Confirm the most recent local commits (hidden-window Task Scheduler
@@ -49,6 +52,9 @@ to ChatGPT/Codex.
   evaluate them against.
 
 ## Waiting
+
+- [x] Configure `SEC_USER_AGENT` in `.env` and validate one SEC slow-cycle fetch
+  (completed 2026-07-15; 58 unique filing events stored).
 
 - [ ] Reddit API access approval - external dependency, Calvin filed a
   request under Reddit's "Responsible Builder Policy"; no fixed timeline,

@@ -26,15 +26,17 @@ import os
 import sys
 from datetime import datetime, timezone
 
+import requests
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config.settings import LOG_PATH, TICKERS
 from storage.db import (
-    init_db, get_conn, insert_price, insert_social, insert_news,
+    init_db, get_conn, insert_price, insert_social, insert_news, insert_event,
     insert_social_sentiment_agg,
 )
 from storage.queries import get_known_tickers, get_latest_prices, get_signal, get_sentiment_summary_by_source
-from ingestion import prices, stocktwits, reddit_source, news, finnhub_source, google_news_source
+from ingestion import prices, stocktwits, reddit_source, news, finnhub_source, google_news_source, bluesky_source, sec_edgar_source, federal_reserve_source
 from processing import sentiment, signal_tracking
 
 
@@ -59,9 +61,9 @@ def run_cycle(mode: str = "full"):
     logger.info("=== Starting '%s' ingestion cycle for %d tickers ===", mode, len(TICKERS))
     init_db()
 
-    quotes, st_messages, reddit_posts = [], [], []
+    quotes, st_messages, reddit_posts, bluesky_posts = [], [], [], []
     finnhub_headlines, finnhub_social = [], []
-    headlines, google_headlines = [], []
+    headlines, google_headlines, events = [], [], []
 
     if run_fast:
         # 1. Prices (yfinance - free, no key)
@@ -79,7 +81,16 @@ def run_cycle(mode: str = "full"):
         except RuntimeError as exc:
             logger.warning("Skipping Reddit ingestion: %s", exc)
 
-        # 4. Finnhub company news + aggregated social sentiment (skipped
+        # 4. Bluesky official API (optional free account + app password)
+        try:
+            bluesky_posts = bluesky_source.fetch_posts()
+            logger.info("Fetched %d Bluesky posts", len(bluesky_posts))
+        except RuntimeError as exc:
+            logger.warning("Skipping Bluesky ingestion: %s", exc)
+        except requests.RequestException as exc:
+            logger.error("Bluesky ingestion failed: %s", exc)
+
+        # 5. Finnhub company news + aggregated social sentiment (skipped
         # gracefully if FINNHUB_API_KEY isn't configured yet)
         try:
             finnhub_headlines = finnhub_source.fetch_all_company_news()
@@ -101,17 +112,33 @@ def run_cycle(mode: str = "full"):
         except Exception as exc:
             logger.error("Google News ingestion failed: %s", exc)
 
+        try:
+            events = sec_edgar_source.fetch_recent_filings()
+            logger.info("Fetched %d SEC filing events", len(events))
+        except RuntimeError as exc:
+            logger.warning("Skipping SEC EDGAR ingestion: %s", exc)
+        except requests.RequestException as exc:
+            logger.error("SEC EDGAR ingestion failed: %s", exc)
+
+        try:
+            events.extend(federal_reserve_source.fetch_events())
+            logger.info("Fetched Federal Reserve events")
+        except (requests.RequestException, ValueError) as exc:
+            logger.error("Federal Reserve RSS ingestion failed: %s", exc)
+
     # Persist everything fetched this cycle
     with get_conn() as conn:
         for q in quotes:
             insert_price(conn, q["ticker"], q["price"], q["day_change_pct"], q["volume"], q["source"], q["fetched_at"])
-        for m in st_messages + reddit_posts:
+        for m in st_messages + reddit_posts + bluesky_posts:
             insert_social(
                 conn, m["ticker"], m["source"], m["external_id"], m["author"],
                 m["text"], m["url"], m["created_at"], m["ingested_at"],
             )
         for h in headlines + google_headlines + finnhub_headlines:
             insert_news(conn, h["ticker"], h["source"], h["title"], h["link"], h["published_at"], h["ingested_at"])
+        for event in events:
+            insert_event(conn, event["ticker"], event["source"], event["category"], event["title"], event["link"], event["published_at"], event["ingested_at"])
         for s in finnhub_social:
             insert_social_sentiment_agg(
                 conn, s["ticker"], s["platform"], s["period"], s["mention"],
