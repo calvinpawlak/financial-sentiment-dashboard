@@ -54,10 +54,10 @@ code before being treated as fact.
   `gunicorn webapp.server:app`, deployed via `render.yaml` Blueprint).
   Chosen after Railway and Fly.io were found to have effectively no usable
   free tier as of when this was researched (2026-07-12).
-- **Ingestion cadence:** fast group (prices, StockTwits, Reddit, Finnhub)
-  every 5 minutes; slow group (FinViz, Google News) every 15 minutes.
-  Controlled by `main.py --fast-only` / `--slow-only` and two separate
-  Windows Task Scheduler jobs.
+- **Ingestion cadence:** free GitHub Actions runs the fast group every 15
+  minutes and the slow group every 6 hours against Neon. Controlled by
+  `main.py --fast-only` / `--slow-only`; the Windows 5/15-minute tasks are
+  fallback definitions, not the active cloud schedule.
 
 ## User preferences
 

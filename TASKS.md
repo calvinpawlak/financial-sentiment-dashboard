@@ -5,9 +5,9 @@ to ChatGPT/Codex.
 
 ## Now
 
-- [ ] Confirm the Render deploy is currently green/"Live" on the latest
-  commit (it failed at least once mid-project on a bug that's since been
-  fixed - worth a fresh check rather than assuming).
+- [ ] Configure the GitHub Actions repository secrets, push the cloud
+  ingestion workflow, manually run fast and slow modes, and verify Neon and
+  dashboard timestamps advance before disabling the Windows tasks.
 
 ## Next
 
@@ -29,9 +29,8 @@ to ChatGPT/Codex.
   horizons, which the current flat 4h/24h grading doesn't account for.
   Deferred until there's enough per-source history to make this
   worthwhile.
-- [ ] Consider moving ingestion itself into the cloud (not just the
-  dashboard) so the public site stays fresh even when Calvin's PC is off -
-  explicitly deferred as a larger, separate project.
+- [x] Prepare free GitHub Actions cloud ingestion so the public site can
+  stay fresh while Calvin's PC is off (2026-07-15).
 - [ ] Add more tickers or subreddits if Calvin wants broader coverage
   (config-only change).
 - [ ] Price alerts / notifications layer on top of the existing verdicts -

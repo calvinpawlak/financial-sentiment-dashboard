@@ -26,17 +26,18 @@ at least prices/StockTwits (the two sources with no auth gate).
 ## 2. Continuous ingestion (the normal steady state)
 
 **Trigger:** Once set up, this runs forever without action needed.
-**Inputs:** Windows Task Scheduler jobs registered via `setup_task_scheduler.ps1`.
-**Steps:** Task Scheduler fires `wscript.exe run_hidden.vbs ... python main.py --fast-only`
-every 5 minutes and the `--slow-only` equivalent every 15 minutes,
-automatically, hidden (no visible window).
-**Output:** A continuously growing local SQLite file (or Neon Postgres, if
-`DATABASE_URL` is set locally).
-**Quality check:** Periodically tail `logs/ingestion.log` to confirm cycles
-are still succeeding; check `Get-ScheduledTask ... | Get-ScheduledTaskInfo`
-for last run time/result.
-**Completion criteria:** N/A - this is meant to run indefinitely while
-Calvin's PC is on.
+**Inputs:** `.github/workflows/cloud-ingestion.yml` and GitHub Actions
+repository secrets, including `DATABASE_URL`.
+**Steps:** GitHub Actions runs `python main.py --fast-only` every 15 minutes
+at staggered minutes and `--slow-only` every 6 hours. A shared concurrency
+group prevents overlap; `workflow_dispatch` supports manual fast/slow/full
+recovery runs.
+**Output:** A continuously growing Neon Postgres database, independent of
+whether Calvin's PC is on.
+**Quality check:** Check the GitHub Actions run history and confirm each job
+completed successfully; verify the dashboard timestamps advance.
+**Completion criteria:** N/A - this is meant to run indefinitely. GitHub may
+disable public-repository schedules after 60 days without repository activity.
 
 ## 3. Re-registering / changing the scheduled tasks
 
