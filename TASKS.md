@@ -5,9 +5,9 @@ to ChatGPT/Codex.
 
 ## Now
 
-- [ ] Configure the GitHub Actions repository secrets, push the cloud
-  ingestion workflow, manually run fast and slow modes, and verify Neon and
-  dashboard timestamps advance before disabling the Windows tasks.
+- [ ] From Administrator PowerShell, disable the two local Windows tasks now
+  that both GitHub Actions cloud modes are verified. This prevents duplicate
+  local/cloud ingestion while preserving the task definitions as a fallback.
 
 ## Next
 

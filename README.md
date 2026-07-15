@@ -244,8 +244,8 @@ The workflow is `.github/workflows/cloud-ingestion.yml`. It uses staggered
 minutes to reduce scheduler congestion and one shared concurrency lock to
 prevent overlapping database writers. GitHub repository secrets provide the
 Neon connection and source credentials; no secrets are stored in this repo.
-The Windows tasks below are retained as a local fallback while cloud runs are
-being verified.
+The Windows tasks below are retained as a local fallback but should be
+disabled after the cloud runs are verified.
 
 **Split cadence, added 2026-07-12** (Calvin asked for 5-minute scanning
 across the board; FinViz only updates news ~every 30 min and its terms
