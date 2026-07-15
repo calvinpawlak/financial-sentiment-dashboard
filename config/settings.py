@@ -57,7 +57,8 @@ TICKER_ALIASES = {
 # Split cadence, moved to GitHub Actions on 2026-07-15 so ingestion continues
 # while Calvin's PC is off. The free cloud schedule runs fast sources every
 # 15 minutes and slow sources every 6 hours. The older local Task Scheduler
-# jobs retain their 5/15-minute cadence as a temporarily disabled fallback.
+# jobs retain their 5/15-minute cadence and must be disabled from an
+# Administrator PowerShell now that the cloud runs are verified.
 # Calvin originally asked for 5-minute scanning, but
 # FinViz only updates news ~every 30 min and its terms discourage
 # high-frequency automated hits - and Google News RSS is unofficial with no

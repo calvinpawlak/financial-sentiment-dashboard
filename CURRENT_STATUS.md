@@ -6,10 +6,13 @@ Written 2026-07-12, at the point of migrating this project from Claude
 
 ## What's completed
 
-- **Free cloud-ingestion workflow prepared (2026-07-15):** GitHub Actions
+- **Free cloud ingestion live (2026-07-15):** GitHub Actions
   schedules fast ingestion every 15 minutes and slow ingestion every 6
-  hours, supports manual recovery runs, and serializes writers. Repository
-  secrets and live workflow runs still need to be configured and verified.
+  hours, supports manual recovery runs, and serializes writers. Required
+  secret names are configured, and manual fast/slow runs both completed
+  successfully against Neon. The local Windows tasks still need to be
+  disabled from Administrator PowerShell because the non-elevated attempt
+  was denied.
 
 - **Post-audit data-integrity fixes (2026-07-15):** multi-ticker posts and
   articles now preserve every ticker association; overlapping scheduled
