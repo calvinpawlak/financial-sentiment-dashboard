@@ -31,7 +31,7 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 
-from storage.db import insert_signal_log, insert_signal_evaluation
+from storage.db import IS_POSTGRES, insert_signal_log, insert_signal_evaluation
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +49,14 @@ def _get_last_signal(conn, ticker):
     return row[0] if row else None
 
 
+def _lock_signal_ticker(conn, ticker):
+    """Serialize the check-and-insert operation across overlapping cycles."""
+    if IS_POSTGRES:
+        conn.execute("SELECT pg_advisory_xact_lock(hashtext(?))", (f"signal-log:{ticker}",))
+    elif not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
+
+
 def log_signal_if_changed(conn, ticker, signal_info, price_at_signal, logged_at=None, source_breakdown=None):
     """signal_info is the dict returned by storage.queries.get_signal():
     {"signal", "sentiment_verdict", "price_direction", "reasoning", ...}.
@@ -60,6 +68,7 @@ def log_signal_if_changed(conn, ticker, signal_info, price_at_signal, logged_at=
     Returns True if a new row was logged, False if the signal is unchanged
     from the last logged entry for this ticker (no-op)."""
     logged_at = logged_at or datetime.now(timezone.utc).isoformat()
+    _lock_signal_ticker(conn, ticker)
     last_signal = _get_last_signal(conn, ticker)
     if last_signal == signal_info["signal"]:
         return False
@@ -88,18 +97,20 @@ def _grade(signal, price_change_pct):
     return None  # HOLD - not a directional call, see module docstring
 
 
-def evaluate_pending_signals(conn, current_prices, now=None):
-    """current_prices: the dict from storage.queries.get_latest_prices(),
-    i.e. {ticker: {"price": ..., ...}}. Grades every signal_log row that has
-    crossed a horizon and hasn't been graded at that horizon yet. Returns
-    the number of new evaluation rows written."""
+def evaluate_pending_signals(conn, current_prices=None, now=None):
+    """Grade with the first stored price at or after each exact horizon.
+
+    ``current_prices`` remains accepted for call-site compatibility, but is
+    intentionally not used: a latest-price snapshot can badly misgrade an
+    old pending call after sleep, downtime, or a delayed cycle.
+    """
     now = now or datetime.now(timezone.utc)
     written = 0
 
     for horizon in EVALUATION_HORIZONS_HOURS:
         cutoff = (now - timedelta(hours=horizon)).isoformat()
         pending = conn.execute(
-            """SELECT sl.id, sl.ticker, sl.signal, sl.price_at_signal
+            """SELECT sl.id, sl.ticker, sl.signal, sl.price_at_signal, sl.logged_at
                FROM signal_log sl
                LEFT JOIN signal_evaluations se
                    ON se.signal_log_id = sl.id AND se.horizon_hours = ?
@@ -107,21 +118,30 @@ def evaluate_pending_signals(conn, current_prices, now=None):
             (horizon, cutoff),
         ).fetchall()
 
-        for signal_log_id, ticker, signal, price_at_signal in pending:
-            price_info = current_prices.get(ticker)
-            current_price = price_info.get("price") if price_info else None
-            if current_price is None or price_at_signal is None or price_at_signal == 0:
-                continue  # try again next cycle once a price is available
+        for signal_log_id, ticker, signal, price_at_signal, logged_at in pending:
+            signal_time = datetime.fromisoformat(logged_at)
+            if signal_time.tzinfo is None:
+                signal_time = signal_time.replace(tzinfo=timezone.utc)
+            target_time = (signal_time + timedelta(hours=horizon)).isoformat()
+            price_row = conn.execute(
+                """SELECT price, fetched_at FROM raw_prices
+                   WHERE ticker = ? AND fetched_at >= ? AND fetched_at <= ?
+                   ORDER BY fetched_at ASC LIMIT 1""",
+                (ticker, target_time, now.isoformat()),
+            ).fetchone()
+            if not price_row or price_at_signal is None or price_at_signal == 0:
+                continue
+            evaluation_price, evaluation_time = price_row
 
-            price_change_pct = (current_price - price_at_signal) / price_at_signal * 100
+            price_change_pct = (evaluation_price - price_at_signal) / price_at_signal * 100
             correct = _grade(signal, price_change_pct)
 
             insert_signal_evaluation(
                 conn,
                 signal_log_id=signal_log_id,
                 horizon_hours=horizon,
-                evaluated_at=now.isoformat(),
-                price_at_evaluation=current_price,
+                evaluated_at=evaluation_time,
+                price_at_evaluation=evaluation_price,
                 price_change_pct=price_change_pct,
                 correct=correct,
             )

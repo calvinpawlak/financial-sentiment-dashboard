@@ -6,6 +6,13 @@ Written 2026-07-12, at the point of migrating this project from Claude
 
 ## What's completed
 
+- **Post-audit data-integrity fixes (2026-07-15):** multi-ticker posts and
+  articles now preserve every ticker association; overlapping scheduled
+  cycles serialize Signal-change logging; and 4h/24h grading uses the first
+  stored price at or after the exact horizon rather than a delayed latest
+  snapshot. SQLite and Postgres migrate in place without deleting existing
+  rows.
+
 - **New sources (2026-07-15):** Bluesky authenticated ticker search is live
   for all 9 tickers. Federal Reserve official RSS is live. SEC EDGAR support
   is implemented but awaits the required fair-access contact identifier.
@@ -82,32 +89,23 @@ Written 2026-07-12, at the point of migrating this project from Claude
   it with scraping, which StockTwits' current terms prohibit without
   authorization.
 - **Bluesky replacement:** implementation completed 2026-07-15 and covered
-  by offline authentication/search-shape tests. Live activation is waiting
-  only for Calvin to add a Bluesky handle and app password to `.env`.
+  by offline authentication/search-shape tests. Live activation is complete;
+  an observed fast cycle fetched 260 posts on 2026-07-15.
 
 ## Unresolved questions
 
-- Whether the old, pre-cadence-split single Task Scheduler job
-  (`FinancialSentimentDashboard-Ingestion`) was ever actually removed from
-  Calvin's machine - flagged for manual removal, never confirmed.
-- Whether the most recent commits (Task Scheduler hardening, this
-  documentation set) have been pushed to GitHub and whether the Render
-  deploy is currently green - should be checked fresh rather than assumed.
+- Whether the Render deploy is currently green on the latest commit should
+  still be checked fresh rather than assumed. Git itself was verified clean
+  and synchronized with `origin/main` on 2026-07-15.
 - Whether Calvin still wants the old Streamlit dashboard kept around at
   all, now that the Flask app has been the primary interface for a while.
 
 ## Recommended next steps
 
-1. Confirm latest commits are pushed and Render shows "Live" on the
-   current commit (see `TASKS.md` "Now").
-2. Verify the old single-task Task Scheduler job is gone.
-3. Let real signal history accumulate, then run Workflow 8 in
+1. Confirm Render shows "Live" on the current commit (see `TASKS.md` "Now").
+2. Let real signal history accumulate, then run Workflow 8 in
    `WORKFLOWS.md` (review the accuracy log) for real.
-4. Re-check Reddit approval status periodically.
-5. In the new ChatGPT/Codex environment specifically: confirm what the
-   assistant's actual local execution model is (see the risks section
-   below) before assuming any workflow in `WORKFLOWS.md` can run
-   unattended.
+3. Re-check Reddit approval status periodically.
 
 ---
 
@@ -156,15 +154,11 @@ project's `.gitignore` already excludes `.env` and the local database/log
 files; this exclusion should be re-verified as still in effect after
 migration, not assumed to have transferred.
 
-**Task Scheduler and any other Windows-specific automation is inherently
-local to Calvin's machine and outside any assistant's reach regardless of
-platform.** Nothing about the migration changes this - `run_hidden.vbs`
-and the two scheduled tasks will keep running on Calvin's PC exactly as
-they do now unless Calvin himself changes them. This isn't a migration
-risk so much as a fact worth restating: no assistant, on any platform, has
-been or will be able to directly inspect or modify Calvin's live Task
-Scheduler state - all verification of it has always happened by Calvin
-pasting output back into the conversation.
+**Task Scheduler and other Windows-specific automation remain local to
+Calvin's machine.** Codex Desktop can inspect the live task definitions and
+run-state from this workspace, as verified on 2026-07-15, but cannot elevate
+its own permissions. Replacing task definitions may still require Calvin to
+run the setup script from an Administrator PowerShell.
 
 **Free-tier terms (Neon, Render, Finnhub, Reddit's approval policy) are
 time-sensitive facts, not stable architecture.** These were all researched

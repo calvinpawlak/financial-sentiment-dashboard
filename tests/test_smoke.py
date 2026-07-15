@@ -1,4 +1,5 @@
 import os
+import sqlite3
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -76,6 +77,58 @@ class OfflineSmokeTests(unittest.TestCase):
             columns = [row[1] for row in conn.execute("PRAGMA table_info(signal_log)")]
         self.assertIn("source_breakdown", columns)
 
+    def test_legacy_sqlite_uniqueness_migrates_without_changing_ids(self):
+        original_path = db.DB_PATH
+        legacy_dir = tempfile.TemporaryDirectory()
+        legacy_path = os.path.join(legacy_dir.name, "legacy.db")
+        conn = sqlite3.connect(legacy_path)
+        conn.executescript(
+            """
+            CREATE TABLE raw_social (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, ticker TEXT NOT NULL,
+                source TEXT NOT NULL, external_id TEXT, author TEXT, text TEXT,
+                url TEXT, created_at TEXT, ingested_at TEXT NOT NULL,
+                UNIQUE(source, external_id)
+            );
+            CREATE TABLE raw_news (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, ticker TEXT NOT NULL,
+                source TEXT NOT NULL, title TEXT, link TEXT UNIQUE,
+                published_at TEXT, ingested_at TEXT NOT NULL
+            );
+            INSERT INTO raw_social VALUES
+                (41, 'TEST', 'fixture', 'post-1', NULL, 'text', NULL, NULL, '2026-07-15');
+            INSERT INTO raw_news VALUES
+                (73, 'TEST', 'fixture', 'title', 'https://example.test/a', NULL, '2026-07-15');
+            """
+        )
+        conn.close()
+
+        try:
+            db.DB_PATH = legacy_path
+            db.init_db()
+            with db.get_conn() as migrated:
+                db.insert_social(
+                    migrated, "SECOND", "fixture", "post-1", None, "text",
+                    None, None, "2026-07-15",
+                )
+                db.insert_news(
+                    migrated, "SECOND", "fixture", "title",
+                    "https://example.test/a", None, "2026-07-15",
+                )
+                social_ids = migrated.execute(
+                    "SELECT id FROM raw_social ORDER BY id"
+                ).fetchall()
+                news_ids = migrated.execute(
+                    "SELECT id FROM raw_news ORDER BY id"
+                ).fetchall()
+            self.assertEqual(social_ids[0], (41,))
+            self.assertEqual(news_ids[0], (73,))
+            self.assertEqual(len(social_ids), 2)
+            self.assertEqual(len(news_ids), 2)
+        finally:
+            db.DB_PATH = original_path
+            legacy_dir.cleanup()
+
     def test_conservative_signal_buy_and_no_data_hold(self):
         from storage.queries import get_signal
 
@@ -94,13 +147,41 @@ class OfflineSmokeTests(unittest.TestCase):
         with db.get_conn() as conn:
             self.assertTrue(log_signal_if_changed(conn, "TEST", signal, 110.0, logged_at=logged_at))
             self.assertFalse(log_signal_if_changed(conn, "TEST", signal, 110.0, logged_at=logged_at))
-            graded = evaluate_pending_signals(conn, {"TEST": {"price": 120.0}}, now=now)
+            conn.execute("DELETE FROM raw_prices")
+            sample_4h = (now - timedelta(hours=20, minutes=59)).isoformat()
+            sample_24h = (now - timedelta(minutes=59)).isoformat()
+            db.insert_price(conn, "TEST", 120.0, 1.0, 1000, "fixture", sample_4h)
+            db.insert_price(conn, "TEST", 130.0, 1.0, 1000, "fixture", sample_24h)
+            graded = evaluate_pending_signals(conn, {"TEST": {"price": 999.0}}, now=now)
             rows = conn.execute(
-                "SELECT horizon_hours, correct FROM signal_evaluations ORDER BY horizon_hours"
+                """SELECT horizon_hours, correct, price_at_evaluation, evaluated_at
+                   FROM signal_evaluations ORDER BY horizon_hours"""
             ).fetchall()
 
         self.assertEqual(graded, 2)
-        self.assertEqual(rows, [(4, 1), (24, 1)])
+        self.assertEqual(rows, [(4, 1, 120.0, sample_4h), (24, 1, 130.0, sample_24h)])
+
+    def test_multi_ticker_source_items_preserve_each_association(self):
+        now = datetime.now(timezone.utc).isoformat()
+        with db.get_conn() as conn:
+            for ticker in ("TEST", "SECOND"):
+                db.insert_social(
+                    conn, ticker, "fixture", "same-post", "author",
+                    "$TEST and $SECOND", "https://example.test/post", now, now,
+                )
+                db.insert_news(
+                    conn, ticker, "fixture", "Shared article",
+                    "https://example.test/article", now, now,
+                )
+            social_count = conn.execute(
+                "SELECT COUNT(*) FROM raw_social WHERE external_id = ?", ("same-post",)
+            ).fetchone()[0]
+            news_count = conn.execute(
+                "SELECT COUNT(*) FROM raw_news WHERE link = ?", ("https://example.test/article",)
+            ).fetchone()[0]
+
+        self.assertEqual(social_count, 2)
+        self.assertEqual(news_count, 2)
 
     def test_flask_read_endpoints(self):
         self._seed_bullish_rising_ticker()

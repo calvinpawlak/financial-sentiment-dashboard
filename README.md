@@ -198,6 +198,11 @@ the 5-minute Fast group, stores posts as `source=bluesky`, and feeds them
 through the same VADER scoring, deduplication, Signal, and source-attribution
 pipeline as the other social sources.
 
+Deduplication preserves ticker associations: the same post or article may be
+stored once for each tracked ticker it mentions. Identity is therefore
+`(source, external_id, ticker)` for social posts and `(link, ticker)` for news,
+instead of globally discarding every association after the first ticker.
+
 ## Running it
 
 ```bash
@@ -494,9 +499,10 @@ checks each ticker's current Signal against what was logged last time
   - **HOLD is never graded correct or incorrect** — it isn't a directional
     bet, so scoring it would overstate how rigorous this tool is. HOLD rows
     show as "—" in the log rather than a pass/fail.
-  - Evaluation is approximate ("first price sample at or after the horizon
-    time"), not to-the-second precise, since ingestion runs on a 5/15-minute
-    cadence, not continuously.
+  - Evaluation uses the first stored price sample at or after the exact
+    horizon time. It is still only as granular as the ingestion cadence, but
+    delayed grading after sleep or downtime does not substitute a much later
+    latest-price snapshot.
 - **Shown on the dashboard** — a new "Prediction Accuracy" panel shows
   overall hit-rate cards for both horizons plus a table of recent BUY/SELL/
   HOLD calls with their outcome once graded (still "pending" until the
