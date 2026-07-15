@@ -1,8 +1,9 @@
-"""
-Layer 1 - StockTwits ingestion via the free public symbol-stream endpoint.
-No auth needed for basic reads, but StockTwits enforces an unauthenticated
-rate limit (roughly 200 requests/hour per IP as of this writing) - keep the
-scheduler interval reasonable (>=5 min) across your full ticker list.
+"""Layer 1 - StockTwits ingestion via its legacy symbol-stream endpoint.
+
+The unauthenticated endpoint began returning HTTP 403 on 2026-07-15 while
+StockTwits' official developer page said API registrations were paused.
+Stop after the first 403 each cycle rather than sending one denied request
+per ticker. Other ingestion sources continue normally.
 """
 import logging
 from datetime import datetime, timezone
@@ -15,6 +16,10 @@ from config.settings import TICKERS, STOCKTWITS_MESSAGE_LIMIT
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://api.stocktwits.com/api/2/streams/symbol/{symbol}.json"
+
+
+class StockTwitsAccessDenied(RuntimeError):
+    """The legacy unauthenticated API is not available to this project."""
 
 
 def fetch_messages(ticker: str):
@@ -32,8 +37,15 @@ def fetch_messages(ticker: str):
         if resp.status_code == 404:
             logger.warning("StockTwits has no symbol stream for '%s' - likely an invalid ticker.", ticker)
             return []
+        if resp.status_code == 403:
+            raise StockTwitsAccessDenied(
+                "StockTwits denied the legacy unauthenticated API (HTTP 403). "
+                "Approved API access is required; skipping StockTwits for this cycle."
+            )
         resp.raise_for_status()
         data = resp.json()
+    except StockTwitsAccessDenied:
+        raise
     except Exception as exc:
         logger.error("StockTwits fetch failed for '%s': %s", ticker, exc)
         return []
@@ -60,5 +72,9 @@ def fetch_all_messages(tickers=None):
     tickers = tickers or TICKERS
     all_messages = []
     for ticker in tickers:
-        all_messages.extend(fetch_messages(ticker))
+        try:
+            all_messages.extend(fetch_messages(ticker))
+        except StockTwitsAccessDenied as exc:
+            logger.warning("%s", exc)
+            break
     return all_messages

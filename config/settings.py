@@ -5,6 +5,15 @@ Edit TICKERS and REFRESH_INTERVAL_MINUTES here as your watchlist evolves.
 
 import os
 
+from dotenv import load_dotenv
+
+# Load project-local configuration once, before any module chooses a database
+# backend or reads API credentials. Every application entry point imports this
+# settings module, so report.py, prune.py, Flask, and Streamlit now use the same
+# .env configuration as main.py.
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+load_dotenv(os.path.join(_PROJECT_ROOT, ".env"))
+
 # --- Ticker universe -------------------------------------------------------
 # Pulled from the initial watchlist. Updated 2026-07-12:
 #   - SPCX: confirmed VALID. This is Space Exploration Technologies Corp
@@ -91,6 +100,5 @@ GOOGLE_NEWS_HEADLINE_LIMIT = 15
 FINNHUB_NEWS_DAYS_BACK = 2
 
 # --- Storage -----------------------------------------------------------
-_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(_PROJECT_ROOT, "data", "sentiment_dashboard.db")
 LOG_PATH = os.path.join(_PROJECT_ROOT, "logs", "ingestion.log")

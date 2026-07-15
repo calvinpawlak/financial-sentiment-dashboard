@@ -4,4 +4,7 @@
 ' window, even when run from Task Scheduler). Do not run this by hand.
 Set objShell = CreateObject("WScript.Shell")
 objShell.CurrentDirectory = WScript.Arguments(0)
-objShell.Run WScript.Arguments(1), 0, True
+pythonPath = WScript.Arguments(1)
+pythonArgs = WScript.Arguments(2)
+commandLine = Chr(34) & pythonPath & Chr(34) & " " & pythonArgs
+objShell.Run commandLine, 0, True

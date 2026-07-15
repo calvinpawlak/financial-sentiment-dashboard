@@ -28,9 +28,6 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from dotenv import load_dotenv
-load_dotenv()
-
 from config.settings import LOG_PATH, TICKERS
 from storage.db import (
     init_db, get_conn, insert_price, insert_social, insert_news,

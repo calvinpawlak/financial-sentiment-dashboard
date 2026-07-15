@@ -1,5 +1,7 @@
 # Secrets - never commit real credentials
 .env
+*.env
+.env.*
 
 # Local SQLite database + WAL files
 data/*.db
