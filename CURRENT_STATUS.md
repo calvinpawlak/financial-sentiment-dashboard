@@ -6,6 +6,11 @@ Written 2026-07-12, at the point of migrating this project from Claude
 
 ## What's completed
 
+- **Free cloud-ingestion workflow prepared (2026-07-15):** GitHub Actions
+  schedules fast ingestion every 15 minutes and slow ingestion every 6
+  hours, supports manual recovery runs, and serializes writers. Repository
+  secrets and live workflow runs still need to be configured and verified.
+
 - **Post-audit data-integrity fixes (2026-07-15):** multi-ticker posts and
   articles now preserve every ticker association; overlapping scheduled
   cycles serialize Signal-change logging; and 4h/24h grading uses the first
@@ -42,8 +47,8 @@ Written 2026-07-12, at the point of migrating this project from Claude
   HOLD never graded, plus (added during the logic audit) baseline
   comparison, Wilson confidence intervals, a low-sample warning, a
   BUY/SELL split, and per-source attribution.
-- **Split ingestion cadence:** 5-minute fast group, 15-minute slow group,
-  via two separate Windows Task Scheduler jobs.
+- **Split ingestion cadence:** 15-minute fast group and 6-hour slow group
+  via GitHub Actions; Windows 5/15-minute tasks remain a fallback.
 - **Public hosting:** Neon (Postgres) + Render (Flask app), confirmed live
   by Calvin from a screenshot of the deployed page.
 - **Logic audit:** found and fixed a real price/sentiment window-mismatch

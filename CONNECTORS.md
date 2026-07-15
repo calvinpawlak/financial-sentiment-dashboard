@@ -196,6 +196,9 @@ Written 2026-07-12.
 
 ## Windows Task Scheduler
 
+This is retained as a local fallback. The active always-available scheduler
+is the free GitHub Actions workflow described below.
+
 - **Purpose:** runs `main.py` on a recurring schedule so ingestion doesn't
   require Calvin to remember to run it manually.
 - **Type:** OS-level scheduler, not a cloud service.
@@ -214,6 +217,21 @@ Written 2026-07-12.
 - **How to test it works:** check `Get-ScheduledTaskInfo`'s "LastTaskResult"
   is 0 (success) and "LastRunTime" is recent; confirm no console window
   flashes when it fires.
+
+## GitHub Actions cloud ingestion
+
+- **Purpose:** runs ingestion while Calvin's PC is off without adding a paid
+  service.
+- **Where configured:** `.github/workflows/cloud-ingestion.yml`.
+- **Schedule:** fast mode every 15 minutes at minutes 7/22/37/52; slow mode
+  every 6 hours at minute 13; manual fast/slow/full runs are also supported.
+- **Required repository secrets:** `DATABASE_URL`, `FINNHUB_API_KEY`,
+  `BLUESKY_HANDLE`, `BLUESKY_APP_PASSWORD`, and `SEC_USER_AGENT`. Reddit
+  credentials are optional while approval is pending.
+- **Safety:** read-only repository permissions and a shared concurrency group
+  that prevents fast, slow, and manual cycles from writing simultaneously.
+- **How to test it works:** run both modes manually in GitHub Actions, confirm
+  green completion, then verify Neon rows and dashboard timestamps advance.
 
 ## DB Browser for SQLite (optional local tool)
 

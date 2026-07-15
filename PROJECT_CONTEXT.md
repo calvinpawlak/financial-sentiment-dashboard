@@ -63,10 +63,10 @@ actually right, so the tool can be evaluated rather than just trusted.
 
 ## Systems and services involved
 
-- **Local Windows PC** (Calvin's own machine) — runs ingestion via Windows
-  Task Scheduler, is the only place `main.py` executes. If this PC is off,
-  ingestion stops (the hosted dashboard keeps showing stale data, it
-  doesn't go down).
+- **GitHub Actions** — runs ingestion against Neon on a free staggered
+  schedule (fast every 15 minutes, slow every 6 hours), so Calvin's PC can
+  be off. The Windows tasks are retained only as a fallback while the cloud
+  schedule is proven.
 - **Neon** — free-tier hosted Postgres, used only when `DATABASE_URL` is
   set. Exists solely so the public Render-hosted dashboard has a database
   reachable from outside Calvin's PC.

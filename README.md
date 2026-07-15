@@ -233,6 +233,20 @@ use [DB Browser for SQLite](https://sqlitebrowser.org/) if you want a GUI).
 There's no always-on background service here — `main.py` does one pass and
 exits. For continuous monitoring, schedule it to run repeatedly.
 
+**Active free cloud schedule (GitHub Actions, added 2026-07-15):**
+
+- **Fast, every 15 minutes:** `python main.py --fast-only`
+- **Slow, every 6 hours:** `python main.py --slow-only`
+- **Manual recovery:** the Cloud ingestion workflow accepts fast, slow, or
+  full mode from its **Run workflow** button.
+
+The workflow is `.github/workflows/cloud-ingestion.yml`. It uses staggered
+minutes to reduce scheduler congestion and one shared concurrency lock to
+prevent overlapping database writers. GitHub repository secrets provide the
+Neon connection and source credentials; no secrets are stored in this repo.
+The Windows tasks below are retained as a local fallback while cloud runs are
+being verified.
+
 **Split cadence, added 2026-07-12** (Calvin asked for 5-minute scanning
 across the board; FinViz only updates news ~every 30 min and its terms
 discourage high-frequency automated hits, and Google News RSS is unofficial
@@ -617,13 +631,13 @@ instead of Render's.)
    the same Neon database your local ingestion is writing to, so data
    should match your local dashboard within one ingestion cycle.
 
-**The catch that doesn't go away:** ingestion (steps 1-8 of `main.py`, plus
-the Task Scheduler jobs) still only runs while your PC is on. Hosting the
-*dashboard* publicly doesn't make the *data collection* run in the cloud —
-if your PC is off or asleep, the public site stays up and shows the last
-data collected, it just stops getting fresher. Moving ingestion itself to
-run in the cloud too (e.g. a scheduled job on Render or elsewhere) is
-possible later but is a separate, larger step than what was asked for here.
+**Cloud ingestion:** GitHub Actions now runs the collection and scoring jobs
+against Neon, so data can continue updating while your PC is off. Configure
+`DATABASE_URL`, `FINNHUB_API_KEY`, `BLUESKY_HANDLE`,
+`BLUESKY_APP_PASSWORD`, and `SEC_USER_AGENT` as GitHub Actions repository
+secrets. Reddit secrets remain optional until access is approved. GitHub
+schedules can occasionally be delayed, so the workflow uses off-hour minutes
+and provides a manual recovery trigger.
 
 ## Known fragility
 

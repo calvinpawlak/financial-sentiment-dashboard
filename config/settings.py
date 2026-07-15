@@ -54,7 +54,11 @@ TICKER_ALIASES = {
 }
 
 # --- Scheduling --------------------------------------------------------
-# Split cadence, added 2026-07-12 (Calvin asked for 5-minute scanning, but
+# Split cadence, moved to GitHub Actions on 2026-07-15 so ingestion continues
+# while Calvin's PC is off. The free cloud schedule runs fast sources every
+# 15 minutes and slow sources every 6 hours. The older local Task Scheduler
+# jobs retain their 5/15-minute cadence as a temporarily disabled fallback.
+# Calvin originally asked for 5-minute scanning, but
 # FinViz only updates news ~every 30 min and its terms discourage
 # high-frequency automated hits - and Google News RSS is unofficial with no
 # documented rate limit either. Polling either one every 5 min would just
@@ -63,11 +67,10 @@ TICKER_ALIASES = {
 # Finnhub) run every 5 min; the scraped/slower news sources (FinViz, Google
 # News) keep the original 15-min cadence. See `python main.py --fast-only`
 # / `--slow-only` and setup_task_scheduler.ps1, which now registers two
-# separate scheduled tasks. These values aren't enforced by the script
-# itself (the OS scheduler controls actual timing) - they're here so other
-# parts of the pipeline can reference the expected cadence.
-FAST_REFRESH_INTERVAL_MINUTES = 5   # prices, StockTwits, Reddit, Finnhub
-SLOW_REFRESH_INTERVAL_MINUTES = 15  # FinViz, Google News (scraped/unofficial)
+# separate modes. These values describe the active cloud schedule; the
+# scheduler, not the Python script, enforces them.
+FAST_REFRESH_INTERVAL_MINUTES = 15   # prices, social sources, Finnhub
+SLOW_REFRESH_INTERVAL_MINUTES = 360  # FinViz, Google News, SEC, Fed
 
 # --- Reddit ----------------------------------------------------------------
 SUBREDDITS = ["wallstreetbets", "stocks", "investing", "StockMarket"]

@@ -139,6 +139,17 @@ without much friction.
 - Status: **Revisitable** - explicitly flagged as a reasonable future
   project, not ruled out.
 
+**Decision update 2026-07-15: Move ingestion to free GitHub Actions.**
+- Rationale: Calvin requires updates while his PC is off and does not want
+  any paid service. Actions works with the public repository and Neon.
+- Schedule: fast sources every 15 minutes at staggered minutes; slow sources
+  every 6 hours. One concurrency group serializes all writers, and manual
+  fast/slow/full recovery runs are supported.
+- Tradeoff accepted: scheduled runs can be delayed, and public-repository
+  schedules can be disabled after 60 days without repository activity.
+- Status: **Current.** Keep local Windows tasks as a fallback until
+  successful cloud runs are observed.
+
 **Decision: Task Scheduler console-window flash fixed via a generated VBScript launcher (`run_hidden.vbs` + `wscript.exe`), not `pythonw.exe` or "run whether logged on or not."**
 - Rationale: `pythonw.exe` can crash logging that writes to `sys.stdout`
   (which becomes `None`-like without a console); "run whether logged on or

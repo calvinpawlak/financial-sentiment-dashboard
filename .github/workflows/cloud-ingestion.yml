@@ -1,0 +1,74 @@
+name: Cloud ingestion
+
+on:
+  schedule:
+    # Stagger away from the top of the hour to reduce scheduler congestion.
+    - cron: "7,22,37,52 * * * *"
+    - cron: "13 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Ingestion cycle to run
+        required: true
+        default: fast
+        type: choice
+        options:
+          - fast
+          - slow
+          - full
+
+permissions:
+  contents: read
+
+concurrency:
+  group: financial-sentiment-dashboard-ingestion
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+      BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
+      BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
+      SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+      REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+      REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Select ingestion mode
+        id: mode
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            mode="${{ inputs.mode }}"
+          elif [[ "${{ github.event.schedule }}" == "13 */6 * * *" ]]; then
+            mode="slow"
+          else
+            mode="fast"
+          fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+
+      - name: Run ingestion
+        shell: bash
+        run: |
+          case "${{ steps.mode.outputs.mode }}" in
+            fast) python main.py --fast-only ;;
+            slow) python main.py --slow-only ;;
+            full) python main.py ;;
+            *) echo "Unknown ingestion mode" >&2; exit 2 ;;
+          esac
