@@ -1,164 +1,92 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Financial Sentiment Dashboard</title>
-<link rel="stylesheet" href="/style.css" />
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.3/chart.umd.min.js"
-        onerror="this.dataset.failed='1'; var s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js'; document.head.appendChild(s);"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="A source-aware research dashboard combining market prices, public sentiment, official filings, and signal evaluation." />
+  <title>Market Signal Lab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.3/chart.umd.min.js"></script>
 </head>
 <body>
-
-<header class="topbar">
-  <div class="topbar-left">
-    <span class="logo-dot"></span>
-    <span class="brand">Financial Sentiment Dashboard</span>
-  </div>
-  <div class="topbar-right">
-    <span id="last-updated" class="last-updated">Loading…</span>
-    <div id="lookback-tabs" class="tabs">
-      <button data-hours="1">1H</button>
-      <button data-hours="6">6H</button>
-      <button data-hours="12">12H</button>
-      <button data-hours="24" class="active">1D</button>
-      <button data-hours="48">2D</button>
-      <button data-hours="72">3D</button>
-      <button data-hours="168">7D</button>
+  <header class="masthead">
+    <a class="brand" href="#top" aria-label="Market Signal Lab home">
+      <span class="brand-mark">MS</span>
+      <span><strong>Market Signal Lab</strong><small>Financial sentiment research</small></span>
+    </a>
+    <div class="header-status">
+      <span class="live-dot"></span>
+      <span id="last-updated">Connecting to live data</span>
     </div>
-  </div>
-</header>
+  </header>
 
-<div class="disclaimer">
-  <span class="disclaimer-icon">⚠️</span>
-  <span><strong>Not financial advice.</strong> The Signal shown here is a simple, mechanical rule —
-  public sentiment direction combined with the ticker's latest price direction — not a recommendation
-  from a financial advisor. Treat it as one heuristic input among many, and do your own research
-  before making any investment decision.</span>
-</div>
-
-<main class="content">
-
-  <section id="kpi-strip" class="kpi-strip">
-    <!-- ticker cards injected by app.js -->
-  </section>
-
-  <section class="detail-grid">
-    <div class="panel chart-panel">
-      <div class="panel-header">
-        <h2 id="chart-ticker-title">—</h2>
-        <span id="chart-subtitle" class="muted"></span>
+  <main id="top">
+    <section class="hero shell">
+      <div>
+        <p class="eyebrow">Price × public narrative × official events</p>
+        <h1>See what the market is saying—and whether it has mattered.</h1>
+        <p class="hero-copy">This dashboard tracks nine securities, scores public discussion with VADER, combines sentiment with price direction, and grades every mechanical signal at 4- and 24-hour horizons.</p>
       </div>
-      <canvas id="main-chart" height="110"></canvas>
-      <div id="chart-empty-state" class="muted" style="display:none; padding: 40px 0; text-align:center;"></div>
-    </div>
+      <aside class="method-card">
+        <span class="method-number">01</span><p>Collect prices, Bluesky posts, news and source aggregates.</p>
+        <span class="method-number">02</span><p>Score language as bullish, bearish or neutral.</p>
+        <span class="method-number">03</span><p>Compare the resulting signal with subsequent price action.</p>
+      </aside>
+    </section>
 
-    <div class="panel stat-panel">
-      <div class="stat-block">
-        <span class="stat-label">Signal</span>
-        <span id="stat-signal" class="stat-badge">—</span>
-        <span id="stat-reasoning" class="stat-reasoning"></span>
-      </div>
-      <div class="stat-block">
-        <span class="stat-label">Sentiment verdict</span>
-        <span id="stat-verdict" class="stat-value">—</span>
-      </div>
-      <div class="stat-block">
-        <span class="stat-label">Latest price</span>
-        <span id="stat-price" class="stat-value">—</span>
-      </div>
-      <div class="stat-block">
-        <span class="stat-label">Posts analyzed</span>
-        <span id="stat-posts" class="stat-value">—</span>
-      </div>
-      <div id="stat-social" class="stat-social"></div>
-    </div>
-  </section>
+    <section class="control-bar shell" aria-label="Dashboard controls">
+      <div><span class="control-label">Analysis window</span><div id="lookback-tabs" class="tabs">
+        <button data-hours="1">1H</button><button data-hours="6">6H</button><button data-hours="12">12H</button>
+        <button data-hours="24" class="active">1D</button><button data-hours="48">2D</button><button data-hours="72">3D</button><button data-hours="168">7D</button>
+      </div></div>
+      <p class="scope-note"><strong>Research heuristic only.</strong> Signals are rules-based observations, not investment recommendations.</p>
+    </section>
 
-  <section class="panel table-panel">
-    <div class="panel-header">
-      <h2>Watchlist</h2>
-    </div>
-    <table id="watchlist-table">
-      <thead>
-        <tr>
-          <th>Ticker</th>
-          <th>Price</th>
-          <th>Day Change</th>
-          <th>Bullish</th>
-          <th>Bearish</th>
-          <th>Neutral</th>
-          <th>Verdict</th>
-          <th>Signal</th>
-          <th>Trend</th>
-        </tr>
-      </thead>
-      <tbody id="watchlist-body">
-        <!-- rows injected by app.js -->
-      </tbody>
-    </table>
-  </section>
+    <section class="shell section-block">
+      <div class="section-heading"><div><p class="eyebrow">Watchlist pulse</p><h2>Tracked securities</h2></div><p>Select a ticker to update the full research view.</p></div>
+      <div id="kpi-strip" class="ticker-grid" aria-live="polite"></div>
+    </section>
 
-  <section class="panel posts-panel">
-    <div class="panel-header">
-      <h2 id="posts-title">Recent chatter — —</h2>
-    </div>
-    <ul id="posts-list" class="posts-list">
-      <!-- posts injected by app.js -->
-    </ul>
-  </section>
+    <section class="shell research-grid">
+      <article class="panel chart-panel">
+        <div class="panel-head"><div><p class="eyebrow">Selected security</p><h2 id="chart-ticker-title">—</h2></div><span id="chart-subtitle" class="chip">Last 24h</span></div>
+        <div class="chart-wrap"><canvas id="main-chart"></canvas><div id="chart-empty-state" class="empty-state"></div></div>
+      </article>
 
-  <section class="panel posts-panel">
-    <div class="panel-header">
-      <h2 id="events-title">Official events</h2>
-      <span class="muted">SEC filings and Federal Reserve releases are shown separately from sentiment.</span>
-    </div>
-    <ul id="events-list" class="posts-list"></ul>
-  </section>
+      <aside class="panel decision-panel">
+        <div class="panel-head"><div><p class="eyebrow">Mechanical read</p><h2>Signal snapshot</h2></div><span id="stat-signal" class="signal-pill hold">—</span></div>
+        <p id="stat-reasoning" class="reasoning">Waiting for signal data.</p>
+        <div class="metric-grid">
+          <div><span>Latest price</span><strong id="stat-price">—</strong></div>
+          <div><span>Sentiment</span><strong id="stat-verdict">—</strong></div>
+          <div><span>Items analyzed</span><strong id="stat-posts">—</strong></div>
+          <div><span>Bull / Bear / Neutral</span><strong id="stat-mix">—</strong></div>
+        </div>
+        <div id="stat-social" class="source-supplement"></div>
+      </aside>
+    </section>
 
-  <section class="panel accuracy-panel">
-    <div class="panel-header">
-      <h2>Prediction accuracy log</h2>
-      <span class="muted">Tracks every BUY/SELL/HOLD call since 2026-07-12 against what the price actually did</span>
-    </div>
-    <div id="accuracy-summary" class="accuracy-summary">
-      <!-- accuracy stat cards injected by app.js -->
-    </div>
-    <p class="muted accuracy-note">
-      HOLD is not a directional call, so it's logged but never scored correct/incorrect - accuracy % is
-      computed only over BUY/SELL calls. "Pending" means the call hasn't reached that grading horizon yet.
-      The "baseline" line shows how often price simply rose anyway, since markets drift upward over time and
-      that alone can make a BUY-heavy rule look "accurate." The confidence range and low-sample warning exist
-      because a percentage from only a few calls is close to a coin flip, not a real track record yet.
-      This is a track record of a mechanical heuristic, not investment performance - do your own research.
-    </p>
-    <table id="signal-log-table">
-      <thead>
-        <tr>
-          <th>Ticker</th>
-          <th>Call</th>
-          <th>Logged</th>
-          <th>Price @ call</th>
-          <th>Sources</th>
-          <th>4h result</th>
-          <th>24h result</th>
-        </tr>
-      </thead>
-      <tbody id="signal-log-body">
-        <!-- rows injected by app.js -->
-      </tbody>
-    </table>
-  </section>
+    <section class="shell section-block">
+      <div class="section-heading"><div><p class="eyebrow">Cross-sectional view</p><h2>Watchlist comparison</h2></div><p>Price direction, analyzed volume, sentiment balance and current signal.</p></div>
+      <div class="panel table-wrap"><table id="watchlist-table"><thead><tr><th>Security</th><th>Price</th><th>Day</th><th>Analyzed</th><th>Sentiment mix</th><th>Verdict</th><th>Signal</th></tr></thead><tbody id="watchlist-body"></tbody></table></div>
+    </section>
 
-</main>
+    <section class="shell feed-grid section-block">
+      <article class="panel feed-panel"><div class="panel-head"><div><p class="eyebrow">Public narrative</p><h2 id="posts-title">Recent scored discussion</h2></div><span class="chip">VADER-scored</span></div><ul id="posts-list" class="feed-list"></ul></article>
+      <article class="panel feed-panel"><div class="panel-head"><div><p class="eyebrow">Authoritative context</p><h2>SEC & Federal Reserve</h2></div><span class="chip">Not sentiment-scored</span></div><ul id="events-list" class="feed-list"></ul></article>
+    </section>
 
-<footer class="footer">
-  Sentiment scores are heuristic (VADER + a small finance-slang patch), and the BUY/SELL/HOLD Signal
-  is a simple mechanical rule combining that sentiment with recent price direction — neither is
-  financial advice. Treat both as one input among many, and do your own research before making
-  investment decisions.
-</footer>
+    <section class="shell section-block">
+      <div class="section-heading"><div><p class="eyebrow">Evidence, not confidence theater</p><h2>Signal track record</h2></div><p>Directional calls are graded against subsequent price movement. HOLD is logged but never counted as correct.</p></div>
+      <div id="accuracy-summary" class="accuracy-grid"></div>
+      <details class="panel audit-panel"><summary>View signal-by-signal audit trail</summary><div class="table-wrap"><table><thead><tr><th>Ticker</th><th>Call</th><th>Logged</th><th>Price at call</th><th>Input sources</th><th>4h</th><th>24h</th></tr></thead><tbody id="signal-log-body"></tbody></table></div></details>
+    </section>
+  </main>
 
-<script src="/app.js"></script>
+  <footer><div class="shell"><strong>Market Signal Lab</strong><p>Built from yfinance prices, Bluesky discussion, FinViz, Google News, Finnhub aggregates, SEC EDGAR filings and Federal Reserve releases. StockTwits and Reddit remain inactive until approved API access is available.</p><p>VADER sentiment and BUY/SELL/HOLD outputs are experimental research heuristics—not financial advice.</p></div></footer>
+  <script src="/app.js"></script>
 </body>
 </html>
