@@ -75,6 +75,18 @@ code before being treated as fact.
 
 ## Known recurring gotchas (worth remembering, not re-discovering)
 
+- **Source-item identity must include the ticker association.** Social posts
+  use `(source, external_id, ticker)` and news uses `(link, ticker)`. A single
+  post/article can legitimately mention several tracked tickers; globally
+  unique IDs silently discard every association after the first.
+- **Fast and slow scheduled cycles can overlap.** Signal change logging uses
+  a database transaction/advisory lock around its check-and-insert step. Do
+  not remove that lock or reintroduce a non-atomic "read latest, then insert"
+  sequence.
+- **Accuracy grading uses stored horizon prices, not the latest snapshot.**
+  Select the first `raw_prices` sample at or after logged time plus 4h/24h so
+  downtime cannot turn a delayed evaluation into the wrong horizon.
+
 - **Python string `.format()` and literal curly braces don't mix.** A code
   comment containing literal `{...}` inside a string that later gets
   `.format()`-called elsewhere in the same string will raise a `KeyError`.

@@ -5,23 +5,12 @@ to ChatGPT/Codex.
 
 ## Now
 
-- [ ] Add `BLUESKY_HANDLE` and `BLUESKY_APP_PASSWORD` to local `.env`, then
-  live-test the new Bluesky Fast-cycle source.
-
-- [ ] Finish migrating this project to ChatGPT/Codex - this document set is
-  part of that (see `CURRENT_STATUS.md` for the full picture).
-- [ ] Confirm the most recent local commits (hidden-window Task Scheduler
-  fix, this migration doc set) are committed and pushed to GitHub.
 - [ ] Confirm the Render deploy is currently green/"Live" on the latest
   commit (it failed at least once mid-project on a bug that's since been
   fixed - worth a fresh check rather than assuming).
 
 ## Next
 
-- [ ] Verify whether the old single-task Task Scheduler job
-  (`FinancialSentimentDashboard-Ingestion`, pre-cadence-split) still exists
-  on Calvin's machine and remove it if so - it was flagged for manual
-  removal but never confirmed done.
 - [ ] Let enough time pass for real signal_log history to accumulate
   (several days+), then actually review the prediction accuracy log with
   the new baseline/CI/BUY-SELL-split context to see if any data source or
@@ -66,6 +55,13 @@ to ChatGPT/Codex.
   currently paused. The pipeline degrades cleanly in the meantime.
 
 ## Completed
+
+- [x] GPT Projects rename and migration recovery verification (2026-07-15):
+  Git is clean and synchronized with `origin/main`; both scheduled tasks use
+  the renamed `GPT Projects` path and project `.venv`; the old unsuffixed task
+  is absent; and observed fast/slow ingestion cycles completed successfully.
+- [x] Bluesky credentials configured and live Fast-cycle ingestion validated
+  (2026-07-15; 260 posts fetched in the observed cycle).
 
 - [x] Codex recovery validation (2026-07-15): standardized on Python 3.12
   in `.venv`, centralized `.env` loading, migrated the local SQLite schema,

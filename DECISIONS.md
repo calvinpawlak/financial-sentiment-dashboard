@@ -164,6 +164,19 @@ without much friction.
   source-specific grading horizons remain an open, deferred idea (see
   `CURRENT_STATUS.md`).
 
+**Decision: Preserve multi-ticker source associations and make accuracy tracking concurrency/time safe (2026-07-15).**
+- Rationale: a live audit confirmed that globally unique post/article IDs
+  discarded secondary ticker associations, overlapping fast/slow cycles
+  produced duplicate Signal changes, and delayed grading could use a price
+  much later than the intended horizon.
+- Implementation: social identity is `(source, external_id, ticker)`, news
+  identity is `(link, ticker)`, Signal check-and-insert is serialized by the
+  active database, and grading selects the first stored price at or after the
+  exact 4h/24h target.
+- Status: **Permanent** data-integrity behavior. Existing rows are preserved;
+  future cycles can restore secondary ticker associations as sources refetch
+  overlapping data.
+
 **Decision: Migrate the project from Claude (Cowork) to ChatGPT/Codex (2026-07-12).**
 - Rationale: Calvin's own choice; specific motivation not stated in the
   handoff request beyond wanting to continue development there.

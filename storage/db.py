@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS raw_social (
     url TEXT,
     created_at TEXT,               -- when the post was made
     ingested_at TEXT NOT NULL,     -- when we pulled it
-    UNIQUE(source, external_id)
+    UNIQUE(source, external_id, ticker)
 );
 
 CREATE TABLE IF NOT EXISTS raw_news (
@@ -107,9 +107,10 @@ CREATE TABLE IF NOT EXISTS raw_news (
     ticker TEXT NOT NULL,
     source TEXT NOT NULL,
     title TEXT,
-    link TEXT UNIQUE,
+    link TEXT,
     published_at TEXT,
-    ingested_at TEXT NOT NULL
+    ingested_at TEXT NOT NULL,
+    UNIQUE(link, ticker)
 );
 
 CREATE TABLE IF NOT EXISTS raw_events (
@@ -197,7 +198,7 @@ CREATE TABLE IF NOT EXISTS raw_social (
     url TEXT,
     created_at TEXT,
     ingested_at TEXT NOT NULL,
-    UNIQUE(source, external_id)
+    UNIQUE(source, external_id, ticker)
 );
 
 CREATE TABLE IF NOT EXISTS raw_news (
@@ -205,9 +206,10 @@ CREATE TABLE IF NOT EXISTS raw_news (
     ticker TEXT NOT NULL,
     source TEXT NOT NULL,
     title TEXT,
-    link TEXT UNIQUE,
+    link TEXT,
     published_at TEXT,
-    ingested_at TEXT NOT NULL
+    ingested_at TEXT NOT NULL,
+    UNIQUE(link, ticker)
 );
 
 CREATE TABLE IF NOT EXISTS raw_events (
@@ -307,12 +309,91 @@ def _add_column_if_missing(conn, table, column, coltype):
                 raise
 
 
+def _migrate_multi_ticker_uniqueness(conn):
+    """Preserve one row per source item *and ticker*.
+
+    The original constraints treated a post/article as globally unique, so
+    an item returned for two tracked tickers kept only the first association.
+    Keep existing IDs stable because scored_sentiment points back to them.
+    """
+    if IS_POSTGRES:
+        conn.execute(
+            "ALTER TABLE raw_social DROP CONSTRAINT IF EXISTS "
+            "raw_social_source_external_id_key"
+        )
+        conn.execute("ALTER TABLE raw_news DROP CONSTRAINT IF EXISTS raw_news_link_key")
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_raw_social_source_external_ticker "
+            "ON raw_social(source, external_id, ticker)"
+        )
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_raw_news_link_ticker "
+            "ON raw_news(link, ticker)"
+        )
+        return
+
+    social_sql = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'raw_social'"
+    ).fetchone()[0]
+    if "UNIQUE(source, external_id, ticker)" not in social_sql:
+        conn.executescript(
+            """
+            ALTER TABLE raw_social RENAME TO raw_social_legacy_uniqueness;
+            CREATE TABLE raw_social (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticker TEXT NOT NULL,
+                source TEXT NOT NULL,
+                external_id TEXT,
+                author TEXT,
+                text TEXT,
+                url TEXT,
+                created_at TEXT,
+                ingested_at TEXT NOT NULL,
+                UNIQUE(source, external_id, ticker)
+            );
+            INSERT INTO raw_social
+                (id, ticker, source, external_id, author, text, url, created_at, ingested_at)
+            SELECT id, ticker, source, external_id, author, text, url, created_at, ingested_at
+            FROM raw_social_legacy_uniqueness;
+            DROP TABLE raw_social_legacy_uniqueness;
+            CREATE INDEX IF NOT EXISTS idx_raw_social_ticker ON raw_social(ticker);
+            """
+        )
+
+    news_sql = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'raw_news'"
+    ).fetchone()[0]
+    if "UNIQUE(link, ticker)" not in news_sql:
+        conn.executescript(
+            """
+            ALTER TABLE raw_news RENAME TO raw_news_legacy_uniqueness;
+            CREATE TABLE raw_news (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticker TEXT NOT NULL,
+                source TEXT NOT NULL,
+                title TEXT,
+                link TEXT,
+                published_at TEXT,
+                ingested_at TEXT NOT NULL,
+                UNIQUE(link, ticker)
+            );
+            INSERT INTO raw_news
+                (id, ticker, source, title, link, published_at, ingested_at)
+            SELECT id, ticker, source, title, link, published_at, ingested_at
+            FROM raw_news_legacy_uniqueness;
+            DROP TABLE raw_news_legacy_uniqueness;
+            CREATE INDEX IF NOT EXISTS idx_raw_news_ticker ON raw_news(ticker);
+            """
+        )
+
+
 def init_db():
     if not IS_POSTGRES:
         os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     with get_conn() as conn:
         conn.executescript(SCHEMA_POSTGRES if IS_POSTGRES else SCHEMA)
         _add_column_if_missing(conn, "signal_log", "source_breakdown", "TEXT")
+        _migrate_multi_ticker_uniqueness(conn)
 
 
 @contextmanager
@@ -361,7 +442,7 @@ def insert_price(conn, ticker, price, day_change_pct, volume, source, fetched_at
 
 
 def insert_social(conn, ticker, source, external_id, author, text, url, created_at, ingested_at):
-    ignore_clause = "ON CONFLICT (source, external_id) DO NOTHING" if IS_POSTGRES else ""
+    ignore_clause = "ON CONFLICT (source, external_id, ticker) DO NOTHING" if IS_POSTGRES else ""
     or_ignore = "" if IS_POSTGRES else "OR IGNORE "
     conn.execute(
         f"""INSERT {or_ignore}INTO raw_social
@@ -372,7 +453,7 @@ def insert_social(conn, ticker, source, external_id, author, text, url, created_
 
 
 def insert_news(conn, ticker, source, title, link, published_at, ingested_at):
-    ignore_clause = "ON CONFLICT (link) DO NOTHING" if IS_POSTGRES else ""
+    ignore_clause = "ON CONFLICT (link, ticker) DO NOTHING" if IS_POSTGRES else ""
     or_ignore = "" if IS_POSTGRES else "OR IGNORE "
     conn.execute(
         f"""INSERT {or_ignore}INTO raw_news
